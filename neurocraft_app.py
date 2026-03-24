@@ -150,12 +150,6 @@ def _render_interactive_home() -> None:
         unsafe_allow_html=True,
     )
 
-    image_path = ROOT_DIR / "src" / "assets" / "image" / "nn_image.jpg"
-    if image_path.exists():
-        _, center, _ = st.columns([1, 2, 1])
-        with center:
-            st.image(str(image_path), use_container_width=True)
-
     mode = st.radio(
         "Experience Mode",
         options=["Guided", "Builder", "Explorer"],
@@ -253,89 +247,54 @@ def _render_interactive_home() -> None:
 
 
 st.sidebar.title("NeuroCraft Lab")
-st.sidebar.caption("Learn, build, and experiment with neural networks.")
+st.sidebar.caption("Interactive NN Toolbox")
 
-if st.sidebar.button("Home", use_container_width=True):
-    _go_home()
-    st.rerun()
+active_route = st.session_state.get("route_override") or st.session_state.get("active_route", "home")
+
+
+def _sidebar_nav_button(label: str, route_value: str) -> None:
+    button_type = "primary" if active_route == route_value else "secondary"
+    if st.sidebar.button(label, use_container_width=True, type=button_type):
+        st.session_state["route_override"] = route_value
+        st.rerun()
+
+
+_sidebar_nav_button("🏠 Home", "home")
+st.sidebar.markdown("---")
+
+st.sidebar.caption("Learner Modules")
+_sidebar_nav_button("🧠 Perceptron", "Perceptron")
+_sidebar_nav_button("➡️ Forward Propagation", "Forward Propagation")
+_sidebar_nav_button("⬅️ Backward Propagation", "Backward Propagation")
+_sidebar_nav_button("🧩 Multi-Layer Perceptron (MLP)", "Multi-Layer Perceptron (MLP)")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**AI Playground**")
-playground = st.sidebar.selectbox(
-    "AI Playground",
-    options=["Explore Data"],
-    index=None,
-    key="playground_nav",
-    placeholder="Select tool...",
-    label_visibility="collapsed",
-    on_change=lambda: _clear_other_tabs("playground"),
-)
+st.sidebar.caption("RNN Applications")
+_sidebar_nav_button("🔁 RNN Hub", "RNN Applications")
+_sidebar_nav_button("✍️ Next Word Predictor", "Next Word Predictor")
+_sidebar_nav_button("😊 Sentiment Analyzer", "Sentiment Analyzer")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Learner Modules**")
-learner = st.sidebar.selectbox(
-    "Learner",
-    options=[
-        "Perceptron",
-        "Forward Propagation",
-        "Backward Propagation",
-        "Multi-Layer Perceptron (MLP)",
-    ],
-    index=None,
-    key="learner_nav",
-    placeholder="Select module...",
-    label_visibility="collapsed",
-    on_change=lambda: _clear_other_tabs("learner"),
-)
+st.sidebar.caption("Computer Vision")
+_sidebar_nav_button("👁️ OpenCV Hub", "OpenCV Lab")
+_sidebar_nav_button("📷 Webcam Detection", "Webcam Detection")
+_sidebar_nav_button("🎞️ Video Detection", "Video Detection")
+_sidebar_nav_button("🖼️ Image Detection", "Image Detection")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Applications**")
-apps = st.sidebar.selectbox(
-    "Applications",
-    options=["RNN Applications", "OpenCV Lab"],
-    index=None,
-    key="apps_nav",
-    placeholder="Select application...",
-    label_visibility="collapsed",
-    on_change=lambda: _clear_other_tabs("apps"),
-)
+st.sidebar.caption("AI Playground")
+_sidebar_nav_button("🤖 Auto-Profile & Train", "Explore Data")
+_sidebar_nav_button("🩺 System Health", "System Health")
 
 st.sidebar.markdown("---")
-if st.sidebar.button("System Health", use_container_width=True):
-    _set_route("apps_nav", "System Health")
-    st.rerun()
+st.sidebar.caption("Documentation")
+_sidebar_nav_button("📘 Perceptron Guide", "Perceptron Guide")
+_sidebar_nav_button("📘 Forward Propagation Guide", "Forward Propagation Guide")
+_sidebar_nav_button("📘 Backward Propagation Guide", "Backward Propagation Guide")
+_sidebar_nav_button("📘 MLP Guide", "MLP Guide")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Documentation**")
-docs = st.sidebar.selectbox(
-    "Docs",
-    options=[
-        "Perceptron Guide",
-        "Forward Propagation Guide",
-        "Backward Propagation Guide",
-        "MLP Guide",
-    ],
-    index=None,
-    key="docs_nav",
-    placeholder="Select guide...",
-    label_visibility="collapsed",
-    on_change=lambda: _clear_other_tabs("docs"),
-)
-
-
-route_override = st.session_state.get("route_override")
-if route_override:
-    route = route_override
-elif playground is not None:
-    route = playground
-elif learner is not None:
-    route = learner
-elif apps is not None:
-    route = apps
-elif docs is not None:
-    route = docs
-else:
-    route = "home"
+route = st.session_state.get("route_override") or st.session_state.get("active_route", "home")
+st.session_state["active_route"] = route
 
 
 if route == "home":
@@ -353,7 +312,13 @@ elif route == "Multi-Layer Perceptron (MLP)":
     mlp_page()
 elif route == "RNN Applications":
     rnn_application_page()
+elif route in {"Next Word Predictor", "Sentiment Analyzer"}:
+    # Keep direct shortcuts in sidebar while reusing central RNN hub page.
+    rnn_application_page()
 elif route == "OpenCV Lab":
+    open_cv_landing_page()
+elif route in {"Webcam Detection", "Video Detection", "Image Detection"}:
+    # Reuse existing OpenCV landing page for mode-specific workflows.
     open_cv_landing_page()
 elif route == "System Health":
     _render_health_dashboard()
