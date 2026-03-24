@@ -1,13 +1,13 @@
-# Neural Network Toolbox
+# NeuroCraft Lab
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.x-ff4b4b)
 ![License](https://img.shields.io/badge/License-MIT-green)
-[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-0aa5a8)](https://nn-tool-box.streamlit.app/)
+[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-0aa5a8)](https://neurocraft-ddlrjzcbnw9zdgam94j84q.streamlit.app/)
 
 An interactive **Streamlit-based learning toolbox** for understanding core **Neural Network concepts** and **Computer Vision techniques** through hands-on experimentation and visualizations.
 
-**Live App**: https://nn-tool-box.streamlit.app/
+**Live App**: https://neurocraft-ddlrjzcbnw9zdgam94j84q.streamlit.app/
 > Since it's freely deployed, the app may need a few seconds to wake up.
 
 ---
@@ -31,13 +31,33 @@ An interactive **Streamlit-based learning toolbox** for understanding core **Neu
 
 ---
 
+## New UI Preview
+
+The app now includes a **sidebar-first navigation UI** for quick access to modules, similar to an LMS-style toolbox layout.
+
+### Sidebar Sections
+- Learner Modules
+- RNN Applications
+- Computer Vision
+- AI Playground
+- Documentation
+
+### What's New in the UI
+- One-click, grouped navigation from the left sidebar
+- Active route highlighting for better orientation
+- Home dashboard with guided/builder/explorer modes
+- Command Center for direct module launching
+- System Health panel to validate API key and core assets
+
+---
+
 ## Getting Started
 
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone https://github.com/Prateekkp/nn_toolbox.git
-cd nn_toolbox
+git clone https://github.com/akshat24code/neurocraft.git
+cd neurocraft
 ```
 
 ### 2️⃣ Create & activate a virtual environment
@@ -179,10 +199,11 @@ flowchart LR
 ## Usage Guide
 
 ### Navigation
-Use the **sidebar** to select from four main sections:
+Use the **sidebar** to access grouped sections:
+- **Learner Modules** — Step-by-step neural network concept walkthroughs
+- **RNN Applications** — Hub plus task shortcuts
+- **Computer Vision** — OpenCV hub and mode shortcuts
 - **AI Playground** — Auto-analyze datasets and auto-generate training scripts
-- **Learner** — Step-by-step neural network concept walkthroughs
-- **Application** — Interactive OpenCV detection or RNN text processing
 - **Documentation** — Reference guides
 
 ### AI Playground
