@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ### 4️⃣ Run the app
 
 ```bash
-streamlit run app.py
+streamlit run neurocraft_app.py
 ```
 
 The app will open automatically at `http://localhost:8501`.
@@ -69,7 +69,7 @@ The app will open automatically at `http://localhost:8501`.
 
 ```
 .
-├── app.py                         # Main Streamlit entry point
+├── neurocraft_app.py              # Main Streamlit entry point
 ├── requirements.txt
 │
 ├── data/
@@ -128,7 +128,7 @@ The app will open automatically at `http://localhost:8501`.
 
 ```mermaid
 flowchart TB
-    A[app.py - Navigation Hub] --> AI[AI Playground]
+    A[neurocraft_app.py - Navigation Hub] --> AI[AI Playground]
     A --> L[Learner Modules]
     A --> APP[Applications]
     A --> DOC[Documentation]
