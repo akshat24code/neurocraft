@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import pickle
 import re
+import io
 from pathlib import Path
 import speech_recognition as sr
 import requests
@@ -158,19 +159,17 @@ def word_sentiment_html(text):
         )
     return "<p style='line-height:2; font-size:1rem;'>" + " ".join(spans) + "</p>"
 
-def speech_to_text():
-    r = sr.Recognizer()
+def speech_to_text_from_audio(audio_bytes: bytes):
+    """Transcribe browser-recorded audio bytes into text."""
+    recognizer = sr.Recognizer()
     try:
-        with sr.Microphone() as source:
-            st.info("Listening… speak now.")
-            audio = r.listen(source, timeout=8)
-        return r.recognize_google(audio)
-    except sr.WaitTimeoutError:
-        return "No speech detected (timeout)"
+        with sr.AudioFile(io.BytesIO(audio_bytes)) as source:
+            audio_data = recognizer.record(source)
+        return recognizer.recognize_google(audio_data), None
     except sr.UnknownValueError:
-        return "Could not understand audio"
+        return "", "Could not understand speech. Please speak more clearly."
     except Exception as e:
-        return f"Mic error: {e}"
+        return "", f"Speech transcription failed: {e}"
 
 def improve_text_llm(text, api_key):
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -223,19 +222,31 @@ def rnn_sentiment_page():
         placeholder="Type something or use the microphone…",
     )
 
+    st.caption("Speak input (browser microphone)")
+    audio_clip = st.audio_input("Record your voice", label_visibility="collapsed")
+
+    # Auto-fill text area when a new audio clip is recorded.
+    if audio_clip is not None:
+        audio_bytes = audio_clip.getvalue()
+        clip_size = len(audio_bytes)
+        previous_size = st.session_state.get("last_audio_clip_size")
+        if clip_size > 0 and clip_size != previous_size:
+            with st.spinner("Transcribing your speech..."):
+                spoken_text, speech_error = speech_to_text_from_audio(audio_bytes)
+            st.session_state["last_audio_clip_size"] = clip_size
+            if speech_error:
+                st.warning(speech_error)
+            elif spoken_text.strip():
+                st.session_state["spoken_text"] = spoken_text
+                st.rerun()
+
     col_analyze, col_speak = st.columns([3, 1])
 
     with col_analyze:
         analyze_clicked = st.button("Analyze", type="primary", use_container_width=True)
 
     with col_speak:
-        speak_clicked = st.button("Speak", use_container_width=True)
-
-    if speak_clicked:
-        with st.spinner("Listening…"):
-            spoken = speech_to_text()
-        st.session_state["spoken_text"] = spoken
-        st.rerun()
+        st.button("Speak", use_container_width=True, disabled=True, help="Use the voice recorder above.")
 
     st.divider()
 
