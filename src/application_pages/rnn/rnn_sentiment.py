@@ -81,27 +81,18 @@ class RNNModel(nn.Module):
 
 
 class LSTMModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim=128, hidden_dim=128,
-                 num_layers=2, dropout=0.3, pad_idx=0):
+    def __init__(self, vocab_size, embed_dim=128, hidden_dim=128, pad_idx=0):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size + 2, embed_dim, padding_idx=pad_idx)
-        self.lstm = nn.LSTM(
-            embed_dim,
-            hidden_dim,
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout if num_layers > 1 else 0,
-        )
-        self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_dim * 2, 1)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, 1)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        emb = self.embedding(x)
-        out, _ = self.lstm(emb)
-        pooled, _ = torch.max(out, dim=1)
-        out = self.dropout(pooled)
-        return self.fc(out).squeeze(1)
+        x = self.embedding(x)
+        _, (hidden, _) = self.lstm(x)
+        out = self.fc(hidden[-1])
+        return self.sigmoid(out).squeeze(1)
 
 
 @st.cache_resource
@@ -115,6 +106,12 @@ def load_model(model_type):
     model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device("cpu")))
     model.eval()
     return model
+
+
+def save_uploaded_checkpoint(uploaded_file, destination: Path):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(uploaded_file.getbuffer())
+    load_model.clear()
 
 
 # ==============================
@@ -143,8 +140,8 @@ def predict_probability(text, model_type):
     tensor = torch.tensor([padded], dtype=torch.long)
 
     with torch.no_grad():
-        logit = model(tensor).item()
-        return torch.sigmoid(torch.tensor(logit)).item()
+        probability = model(tensor).item()
+        return probability
 
 
 def predict_sentiment(text, model_type):
@@ -274,6 +271,7 @@ def rnn_sentiment_page(model_type="RNN"):
     st.title(f"{model_label} Sentiment Analyzer")
 
     checkpoint_path = MODEL_CONFIGS[model_type]["checkpoint"]
+    state_prefix = model_type.lower()
     has_checkpoint = checkpoint_path.exists()
     if has_checkpoint:
         st.caption(f"Loaded checkpoint: `{checkpoint_path.name}`")
@@ -289,10 +287,40 @@ def rnn_sentiment_page(model_type="RNN"):
         "English movie/product review-style text.",
     )
 
+    if model_type == "LSTM":
+        with st.expander("Train or upload your own LSTM checkpoint"):
+            st.markdown(
+                "Train your own sentiment model and save the weights as "
+                f"`{checkpoint_path}`. The included training script expects a CSV with "
+                "binary labels like `0/1` and text in columns such as `text` and `label`."
+            )
+            st.code(
+                "python scripts/train_lstm_sentiment.py --dataset data\\your_reviews.csv "
+                "--text-col text --label-col label --epochs 5",
+                language="bash",
+            )
+            st.caption(
+                "Important: your checkpoint must match this app's tokenizer/config assets "
+                "(`word2idx.pkl` and `config.pkl`). If you train with the included script, "
+                "it will stay compatible with the app."
+            )
+
+            uploaded_checkpoint = st.file_uploader(
+                "Upload a trained LSTM checkpoint (.pth)",
+                type=["pth"],
+                key=f"{state_prefix}_checkpoint_upload",
+            )
+            if uploaded_checkpoint is not None and st.button(
+                "Save uploaded checkpoint",
+                key=f"{state_prefix}_checkpoint_save",
+                use_container_width=True,
+            ):
+                save_uploaded_checkpoint(uploaded_checkpoint, checkpoint_path)
+                st.success(f"Saved `{checkpoint_path.name}`. The page will reload with your model.")
+                st.rerun()
+
     st.divider()
     st.subheader("Single Text Input")
-
-    state_prefix = model_type.lower()
     text = st.text_area(
         "Enter your review or opinion:",
         value=st.session_state.get(f"{state_prefix}_spoken_text", ""),
@@ -452,3 +480,7 @@ def rnn_sentiment_page(model_type="RNN"):
                 improved = improve_text_llm(text, active_key)
             st.markdown("**Refined text:**")
             st.write(improved)
+
+
+
+
