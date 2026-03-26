@@ -377,11 +377,13 @@ def _set_route(route_group: str, route_value: str) -> None:
 def _health_rows():
     python_ok = True
     env_ok = Path(".env").exists()
-    nvidia_ok = bool(os.getenv("NVIDIA_API_KEY"))
+    nvidia_ok = bool(_get_secret_or_env("NVIDIA_API_KEY"))
     torch_ok = True
+    env_status = "OK" if env_ok else "Optional"
+    env_detail = "Local .env file found in project root." if env_ok else "Optional on deployment. Use Streamlit secrets or environment variables instead."
     return [
         ("Python Environment", "OK" if python_ok else "Missing", "Python runtime detected."),
-        (".env File", "OK" if env_ok else "Missing", "Environment file in project root."),
+        (".env File", env_status, env_detail),
         ("NVIDIA API Key", "OK" if nvidia_ok else "Missing", "Needed for AI Playground + text refinement."),
         ("PyTorch", "OK" if torch_ok else "Missing", "Required for RNN/LSTM demos."),
     ]
@@ -665,3 +667,4 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
