@@ -28,6 +28,16 @@ st.set_page_config(
 
 ROOT_DIR = Path(__file__).parent
 
+def _get_secret_or_env(name: str) -> str:
+    value = os.getenv(name, '')
+    if value:
+        return value
+    try:
+        return st.secrets.get(name, '')
+    except Exception:
+        return ''
+
+
 NAV_SECTIONS = {
     "Start Here": [
         ("Home", "home", "Overview and quick launch"),
@@ -403,6 +413,8 @@ def _render_health_dashboard() -> None:
     for name, status, detail in _health_rows():
         if status == "OK":
             st.success(f"{name}: {detail}")
+        elif status == "Optional":
+            st.info(f"{name}: {detail}")
         else:
             st.warning(f"{name}: {detail}")
 
@@ -667,4 +679,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
 
