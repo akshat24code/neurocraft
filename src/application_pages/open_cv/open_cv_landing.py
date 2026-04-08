@@ -49,6 +49,16 @@ DETECTION_META: dict[str, dict[str, str]] = {
         "tech": "Ensemble face detect · enumerated boxes · overlay text",
         "tips": "For dense crowds, counts may duplicate or miss — cascades are not deep trackers.",
     },
+    "Colored Object Detection": {
+        "emoji": "🎨",
+        "tagline": "Dynamic Color Tracking (R/G/B)",
+        "long": (
+            "Converts the feed from BGR to **HSV color space** to build robust masks for **Red, Green, and Blue** objects. "
+            "Filters noise via morphology, applies contours filtering, and labels the tracked areas dynamically in real time!"
+        ),
+        "tech": "HSV Masking · Morphological Opening · findContours",
+        "tips": "Ensure good lighting. The tracker looks for specifically strong reds, blues, and greens.",
+    },
 }
 
 INPUT_META: dict[str, dict[str, str]] = {
@@ -131,11 +141,15 @@ def _render_detection_cards() -> None:
     st.markdown("##### Step 1 — Detection mode")
     st.caption("Pick what the pipeline should look for. Each card uses a different classical-CV story.")
 
-    cols = st.columns(4)
+    num_cols = 3
+    cols = None
     for i, opt in enumerate(DETECTION_OPTIONS):
+        if i % num_cols == 0:
+            cols = st.columns(num_cols)
+            
         meta = DETECTION_META[opt]
         selected = st.session_state.opencv_det_type == opt
-        with cols[i]:
+        with cols[i % num_cols]:
             with st.container(border=True):
                 st.markdown(
                     f"<div style='text-align:center;font-size:2rem;line-height:1;'>{meta['emoji']}</div>",

@@ -13,7 +13,9 @@ from src.assets.documents.forward_propagation import forward_propagation_docs_pa
 from src.assets.documents.mnp import mnp_docs_page
 from src.assets.documents.perceptron import perceptron_docs_page
 from src.learner_pages.backward_propagation import backward_propagation_page
+from src.learner_pages.alphabet_grid import alphabet_grid_page
 from src.learner_pages.forward_propagation import forward_propagation_page
+from src.learner_pages.hopfield import hopfield_page
 from src.learner_pages.mlp import mlp_page
 from src.learner_pages.perceptron_ui import perceptron_page
 
@@ -46,6 +48,8 @@ NAV_SECTIONS = {
     "Learning Lab": [
         ("Perceptron", "Perceptron", "Binary logic and decision boundaries"),
         ("Forward Propagation", "Forward Propagation", "See activations move through a network"),
+        ("Alphabet Grid Recognition", "Alphabet Grid Recognition", "Draw letters on a matrix workspace and recognize them"),
+        ("Hopfield Network", "Hopfield Network", "12x12 Alphabet associative memory and energy minimization"),
         ("Backward Propagation", "Backward Propagation", "Understand gradient updates step by step"),
         ("Multi-Layer Perceptron", "Multi-Layer Perceptron (MLP)", "Train on IRIS or your own CSV"),
     ],
@@ -640,6 +644,10 @@ elif route == "Perceptron":
     perceptron_page()
 elif route == "Forward Propagation":
     forward_propagation_page()
+elif route == "Alphabet Grid Recognition":
+    alphabet_grid_page()
+elif route == "Hopfield Network":
+    hopfield_page()
 elif route == "Backward Propagation":
     backward_propagation_page()
 elif route == "Multi-Layer Perceptron (MLP)":
@@ -679,6 +687,3 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-
-

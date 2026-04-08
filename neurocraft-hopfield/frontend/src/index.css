@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-['Outfit'] antialiased bg-slate-50 text-slate-900;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 active:scale-95 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-neuro-600 text-white hover:bg-neuro-700 shadow-lg shadow-neuro-200;
+  }
+  .btn-secondary {
+    @apply bg-white text-slate-700 border border-slate-200 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100;
+  }
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+}
+
+/* Custom Grid pixel style */
+.pixel {
+  @apply w-full aspect-square border-[0.5px] border-slate-100 cursor-crosshair transition-colors duration-75;
+}
+
+.pixel-black {
+  @apply bg-slate-900 shadow-inner;
+}
+
+.pixel-white {
+  @apply bg-white;
+}
+
+.pixel-hover {
+  @apply hover:bg-slate-200;
+}
+
+/* Animations */
+@keyframes pixel-pop {
+  0% { transform: scale(0.9); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop {
+  animation: pixel-pop 0.1s ease-out;
+}

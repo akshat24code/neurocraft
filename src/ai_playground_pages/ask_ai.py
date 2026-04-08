@@ -405,41 +405,155 @@ def render_training_results(results):
 
 
 # ==============================
+# AI MENTOR CHATBOT LOGIC
+# ==============================
+def get_chatbot_response(prompt, summary):
+    if not NVIDIA_API_KEY:
+        return "Your NVIDIA_API_KEY is missing! I am running in low-power mode. Please add your API key to .env to unlock my true LLM capabilities!"
+
+    dataset_context = "No dataset currently uploaded. Ask the user to upload a CSV file."
+    
+    if summary:
+        num = len(summary.get("numerical", []))
+        cat = len(summary.get("categorical", []))
+        shape = summary.get("shape", [0,0])
+        
+        # Safely handle missing values which is a pandas series
+        try:
+            missing_total = int(summary.get("missing", pd.Series()).sum())
+        except:
+            missing_total = "Unknown"
+
+        dataset_context = (
+            f"Dataset Shape: {shape[0]} rows, {shape[1]} columns.\n"
+            f"Numerical Columns ({num}): {', '.join(summary.get('numerical', [])[:8])}...\n"
+            f"Categorical Columns ({cat}): {', '.join(summary.get('categorical', [])[:8])}...\n"
+            f"Total Missing Cells: {missing_total}."
+        )
+
+    # Build the Augmented Prompt for Llama 3
+    augmented_prompt = f"""You are the NeuroCraft AI Mentor, an expert data science and machine learning assistant.
+You are helping a user analyze a dataset and build ML models.
+
+RULES:
+1. Be directly helpful, encouraging, and highly concise. Do not write essays.
+2. Use Markdown formatting (bolding, bullet points) to make your response readable.
+3. Only write code if explicitly asked. Otherwise, focus on conceptual guidance and analysis.
+4. If the user asks about their data, reference the context below. If they haven't uploaded data, encourage them to do so via the UI.
+
+CURRENT DATASET CONTEXT:
+{dataset_context}
+
+USER QUERY:
+{prompt}
+"""
+    
+    # Call the actual LLM API
+    return call_nvidia_llm(augmented_prompt, max_tokens=800)
+
+
+def render_chatbot():
+    st.sidebar.markdown("### 🤖 AI Mentor")
+    st.sidebar.caption("Powered by Llama 3 (Nvidia API)")
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "Welcome to the AI Playground! 🚀 Upload a dataset and I'll analyze it for you in real time."}]
+        
+    for msg in st.session_state.messages:
+        with st.sidebar.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+    if prompt := st.sidebar.chat_input("Ask about your data or models..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.sidebar.chat_message("user"):
+            st.markdown(prompt)
+            
+        with st.sidebar.chat_message("assistant"):
+            summary = st.session_state.get("df_summary", None)
+            
+            with st.spinner("Analyzing..."):
+                response = get_chatbot_response(prompt, summary)
+            
+            message_placeholder = st.empty()
+            full_res = ""
+            import time
+            
+            # Simple typing animation
+            words = response.split(" ")
+            for i, chunk in enumerate(words):
+                full_res += chunk + " "
+                # Only animate the first 50 words to avoid super long waits for large LLM responses
+                if i < 50:
+                    message_placeholder.markdown(full_res + "▌")
+                    time.sleep(0.02)
+                
+            message_placeholder.markdown(full_res)
+            
+        st.session_state.messages.append({"role": "assistant", "content": full_res})
+
+
+# ==============================
+# UI CSS INJECTIONS
+# ==============================
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        @keyframes slideUpFade {
+            0% { opacity: 0; transform: translateY(15px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-component {
+            animation: slideUpFade 0.7s ease-out forwards;
+        }
+        div[data-testid="stExpander"] {
+            background: rgba(30, 41, 59, 0.4) !important;
+            backdrop-filter: blur(10px) !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2) !important;
+            transition: all 0.3s ease;
+        }
+        div[data-testid="stExpander"]:hover {
+            border: 1px solid rgba(56, 189, 248, 0.4) !important;
+            box-shadow: 0 8px 32px rgba(56, 189, 248, 0.15) !important;
+        }
+        .stButton button {
+            transition: all 0.2s ease-in-out;
+            border-radius: 8px !important;
+        }
+        .stButton button:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+            font-weight: 700 !important;
+            color: #38bdf8 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+
+# ==============================
 # MAIN APP
 # ==============================
 def explore_data_page():
-    st.title("Explore Your Data with AI Assistance")
-    st.caption("Upload a CSV dataset for automated EDA and AI-generated insights.")
-
-    # ── Always-visible info boxes ──────────────────────────────────────────
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info(
-            "**What This Tool Does**\n\n"
-            "- Auto-profile datasets (missing values, distributions, correlations)\n"
-            "- LLM analysis (problem type, model suggestions, data quality)\n"
-            "- Auto-generate & execute custom training scripts\n"
-            "- Return metrics and feature importances"
-        )
-    with col2:
-        st.warning(
-            "**Limitations**\n\n"
-            "- CSV files only, max **50 MB**\n"
-            "- scikit-learn based (XGBoost / LightGBM optional, no deep learning)\n"
-            "- AI outputs are best-effort \u2014 review before production use\n"
-            "- LLM code may need a retry if it makes incorrect data assumptions"
-        )
+    inject_custom_css()
+    render_chatbot()
+    
+    st.markdown("<div class='animate-component'>", unsafe_allow_html=True)
+    st.title("✨ Interactive AI Playground")
+    st.caption("Upload data over the interactive pipeline. Your **AI Mentor** in the sidebar is ready to guide you!")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if not NVIDIA_API_KEY:
-        st.error("NVIDIA_API_KEY not found. Add it to your .env file.")
-        return
+        st.error("NVIDIA_API_KEY not found. Neural generation will disabled, but the Mentor is still active.")
 
     st.divider()
 
-    uploaded_file = st.file_uploader("Upload dataset (CSV)", type=["csv"], help="Max 50 MB per file \u2022 CSV only")
+    uploaded_file = st.file_uploader("Upload dataset (CSV)", type=["csv"], help="Max 50 MB per file")
 
     if uploaded_file:
-
         file_size_mb = uploaded_file.size / (1024 * 1024)
         if file_size_mb > MAX_FILE_SIZE_MB:
             st.error(f"File too large ({file_size_mb:.1f} MB). Maximum allowed: {MAX_FILE_SIZE_MB} MB.")
@@ -449,15 +563,7 @@ def explore_data_page():
             df = pd.read_csv(uploaded_file, encoding="utf-8")
         except UnicodeDecodeError:
             uploaded_file.seek(0)
-            try:
-                df = pd.read_csv(uploaded_file, encoding="latin-1")
-                st.info("File loaded using latin-1 encoding.")
-            except Exception as e:
-                st.error(f"Could not read file: {e}")
-                return
-        except Exception as e:
-            st.error(f"Could not parse CSV: {e}")
-            return
+            df = pd.read_csv(uploaded_file, encoding="latin-1")
 
         df_hash = get_df_hash(df)
 
@@ -467,229 +573,135 @@ def explore_data_page():
                 st.session_state.pop(key, None)
             st.session_state["df_hash"] = df_hash
 
-        st.subheader("Dataset Preview")
-        st.dataframe(df.head(), use_container_width=True)
-
         summary = analyze_data(df_hash, df)
+        st.session_state["df_summary"] = summary
 
-        # ==============================
-        # ABOUT DATA
-        # ==============================
-        with st.expander("About Data", expanded=False):
-
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Rows", df.shape[0])
-            col2.metric("Columns", df.shape[1])
-            col3.metric("Missing Cells", int(summary["missing"].sum()))
-            col4.metric("Duplicate Rows", summary["duplicates"])
-
+        # ── Interactive Tab Pipeline ──────────────────────────────────────────
+        tab_overview, tab_visualize, tab_train = st.tabs([
+            "📊 1. Overview & Clean", 
+            "📈 2. Deep Dive Visuals", 
+            "🧠 3. Train & Evaluate"
+        ])
+        
+        # TAB 1: OVERVIEW
+        with tab_overview:
+            st.markdown("<div class='animate-component'>", unsafe_allow_html=True)
+            st.subheader("Data Overview")
+            
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Rows", f"{df.shape[0]:,}")
+            c2.metric("Columns", f"{df.shape[1]:,}")
+            c3.metric("Missing Cells", int(summary["missing"].sum()))
+            c4.metric("Duplicate Rows", summary["duplicates"])
+            
             st.divider()
+            st.dataframe(df.head(15), use_container_width=True)
+            
+            with st.expander("Show Missing Values & Types"):
+                col_left, col_right = st.columns(2)
+                with col_left:
+                    st.caption("Data Types")
+                    st.dataframe(summary["dtypes"].reset_index().rename(columns={"index": "Column", 0: "Type"}), use_container_width=True)
+                with col_right:
+                    st.caption("Missing Values")
+                    miss = summary["missing"]
+                    st.dataframe(miss[miss > 0].reset_index().rename(columns={"index": "Column", 0: "Missing Count"}), use_container_width=True)
+            
+            if "top_correlations" in summary:
+                with st.expander("Smart Correlations Grid"):
+                    st.dataframe(summary["top_correlations"].style.background_gradient(subset=["Correlation"], cmap="Blues"), use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-            tab1, tab2, tab3, tab4 = st.tabs(["Column Types", "Missing Values", "Numerical Stats", "Categorical Stats"])
-
-            with tab1:
-                type_df = summary["dtypes"].reset_index()
-                type_df.columns = ["Column", "Type"]
-                st.dataframe(type_df, use_container_width=True)
-
-            with tab2:
-                missing_df = pd.DataFrame({
-                    "Column": summary["missing"].index,
-                    "Missing Count": summary["missing"].values,
-                    "Missing %": summary["missing_pct"].values
-                })
-                missing_df = missing_df[missing_df["Missing Count"] > 0]
-                if missing_df.empty:
-                    st.success("No missing values found.")
-                else:
-                    st.dataframe(missing_df, use_container_width=True)
-
-            with tab3:
-                if "num_stats" in summary:
-                    st.dataframe(summary["num_stats"].round(3), use_container_width=True)
-                else:
-                    st.info("No numerical columns found.")
-
-            with tab4:
-                if summary["cat_stats"]:
-                    cat_df = pd.DataFrame(summary["cat_stats"]).T.reset_index()
-                    cat_df.columns = ["Column", "Unique Values", "Top Value", "Top Frequency"]
-                    st.dataframe(cat_df, use_container_width=True)
-                else:
-                    st.info("No categorical columns found.")
-
-        # ==============================
-        # COLUMN DEEP DIVE
-        # ==============================
-        with st.expander("Column Deep Dive", expanded=False):
-            selected_col = st.selectbox("Select a column", df.columns.tolist(), key="deep_dive_col")
+        # TAB 2: VISUALIZE
+        with tab_visualize:
+            st.markdown("<div class='animate-component'>", unsafe_allow_html=True)
+            st.subheader("Interactive Feature Deep Dive")
+            selected_col = st.selectbox("Select a feature to isolate", df.columns.tolist(), key="deep_dive_col")
 
             if selected_col:
                 col_data = df[selected_col]
+                st.markdown(f"#### Analyzing: `{selected_col}`")
+                
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Unique Values", col_data.nunique())
-                c2.metric("Missing", int(col_data.isnull().sum()))
-                c3.metric("Missing %", f"{col_data.isnull().mean() * 100:.1f}%")
-
+                c1.metric("Unique Classes", col_data.nunique())
+                c2.metric("Fill Rate", f"{100 - (col_data.isnull().mean() * 100):.1f}%")
+                
                 if pd.api.types.is_numeric_dtype(col_data):
-                    c4, c5, c6 = st.columns(3)
-                    c4.metric("Mean", f"{col_data.mean():.3f}")
-                    c5.metric("Std Dev", f"{col_data.std():.3f}")
-                    c6.metric("Skewness", f"{col_data.skew():.3f}")
+                    c3.metric("Feature Skewness", f"{col_data.skew():.2f}")
+                else:
+                    c3.metric("Top Frequency", col_data.mode()[0] if not col_data.mode().empty else "N/A")
 
                 chart_data, chart_type = get_column_chart_data(df_hash, selected_col, str(col_data.dtype), df)
 
-                if chart_data.shape[0] == 0:
-                    st.info("No data to display.")
+                if chart_data.shape[0] > 0:
+                    st.bar_chart(chart_data, height=350)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # TAB 3: TRAIN & EVALUATE
+        with tab_train:
+            st.markdown("<div class='animate-component'>", unsafe_allow_html=True)
+            st.subheader("Neural Code Generator & Evaluator")
+            st.caption("Let the LLM write a specialized pipeline for your data, executing it safely in Python.")
+            
+            with st.expander("Automated Analysis Report", expanded=True):
+                if "ai_summary_parsed" not in st.session_state and NVIDIA_API_KEY:
+                    with st.spinner("Analyzing semantics via LLM..."):
+                        raw = call_nvidia_llm(build_analysis_prompt(summary, df.head().to_string()))
+                        parsed, _ = parse_llm_json(raw)
+                        if parsed:
+                            st.session_state["ai_summary_parsed"] = parsed
+                            
+                if st.session_state.get("ai_summary_parsed"):
+                    render_ai_summary(st.session_state["ai_summary_parsed"])
+                elif not NVIDIA_API_KEY:
+                    st.warning("NVIDIA API missing. Proceeding with fallback local training mode.")
+
+            parsed_summary = st.session_state.get("ai_summary_parsed", {})
+            suggested_models = [m["name"] for m in parsed_summary.get("suggested_models", [])] if parsed_summary else []
+            if not suggested_models:
+                suggested_models = ["Random Forest", "Logistic Regression", "XGBoost"]
+
+            col_left, col_right = st.columns(2)
+            with col_left:
+                selected_model = st.selectbox("Select ML Model", options=suggested_models)
+            with col_right:
+                all_cols = df.columns.tolist()
+                guessed = parsed_summary.get("target_column_guess")
+                idx = all_cols.index(guessed) if guessed in all_cols else 0
+                target_col = st.selectbox("Target Column", options=all_cols, index=idx)
+
+            if st.button("🚀 Generate Code & Train", type="primary"):
+                if not NVIDIA_API_KEY:
+                    st.error("NVIDIA API Key required to generate code dynamically.")
                 else:
-                    if chart_type == "numeric" and col_data.nunique() > MAX_CHART_ROWS:
-                        st.caption(f"Distribution shown as 50 bins (column has {col_data.nunique():,} unique values).")
-                    elif chart_type == "categorical" and col_data.nunique() > MAX_CHART_ROWS:
-                        st.caption(f"Showing top {MAX_CHART_ROWS} most frequent values ({col_data.nunique():,} unique total).")
-                    st.bar_chart(chart_data)
-
-        # ==============================
-        # CORRELATIONS
-        # ==============================
-        if "top_correlations" in summary:
-            with st.expander("Top Feature Correlations", expanded=False):
-                st.dataframe(
-                    summary["top_correlations"].style.background_gradient(
-                        subset=["Correlation"], cmap="YlOrRd"
-                    ),
-                    use_container_width=True
-                )
-
-        # ==============================
-        # AI SUMMARY
-        # ==============================
-        with st.expander("AI Summary", expanded=True):
-
-            if "ai_summary_parsed" not in st.session_state:
-                with st.spinner("Generating AI analysis..."):
-                    prompt = build_analysis_prompt(summary, df.head().to_string())
-                    raw = call_nvidia_llm(prompt)
-                    st.session_state["ai_summary_raw"] = raw
-
-                    parsed, err = parse_llm_json(raw)
-                    if parsed:
-                        st.session_state["ai_summary_parsed"] = parsed
-                    else:
-                        st.session_state["ai_summary_parsed"] = None
-                        st.session_state["ai_summary_error"] = err
-
-            if st.session_state.get("ai_summary_parsed"):
-                render_ai_summary(st.session_state["ai_summary_parsed"])
-
-                if st.download_button(
-                    label="Download AI Summary",
-                    data=json.dumps(st.session_state["ai_summary_parsed"], indent=2),
-                    file_name="ai_summary.json",
-                    mime="application/json"
-                ):
-                    pass
-            else:
-                st.warning("Could not parse structured response. Raw output:")
-                st.write(st.session_state.get("ai_summary_raw", "No response."))
-
-        # ==============================
-        # TRAIN MODEL
-        # ==============================
-        parsed_summary = st.session_state.get("ai_summary_parsed")
-
-        if parsed_summary:
-            with st.expander("🤖 Train Model", expanded=True):
-
-                st.markdown(
-                    "The LLM will generate a **custom training script** for your dataset and selected model, "
-                    "then execute it in real time and show you the results."
-                )
-
-                suggested_models = [m["name"] for m in parsed_summary.get("suggested_models", [])]
-                if not suggested_models:
-                    suggested_models = ["Random Forest", "Logistic Regression", "XGBoost"]
-
-                col_left, col_right = st.columns(2)
-
-                with col_left:
-                    selected_model = st.selectbox(
-                        "Select model to train",
-                        options=suggested_models,
-                        key="selected_model"
-                    )
-
-                with col_right:
-                    all_cols = df.columns.tolist()
-                    guessed_target = parsed_summary.get("target_column_guess")
-                    default_idx = all_cols.index(guessed_target) if guessed_target in all_cols else 0
-                    target_col = st.selectbox(
-                        "Target column",
-                        options=all_cols,
-                        index=default_idx,
-                        key="target_col"
-                    )
-
-                problem_type = parsed_summary.get("problem_type", "classification")
-
-                st.caption(
-                    f"Problem type: **{problem_type}** \u00b7 "
-                    f"Dataset: **{df.shape[0]:,} rows \u00d7 {df.shape[1]} columns**"
-                )
-
-                train_btn = st.button("\u26a1 Generate Code & Train", type="primary", key="train_btn")
-
-                if train_btn:
-                    for key in ["training_results", "training_code", "training_error"]:
-                        st.session_state.pop(key, None)
-
-                    with st.spinner(f"Asking LLM to write training code for **{selected_model}**..."):
-                        code_prompt = build_training_code_prompt(
-                            df, summary, selected_model, problem_type, target_col
-                        )
+                    with st.spinner(f"Writing intelligent pipeline for {selected_model}..."):
+                        code_prompt = build_training_code_prompt(df, summary, selected_model, parsed_summary.get("problem_type", "classification"), target_col)
                         raw_code = call_nvidia_llm(code_prompt, max_tokens=2000)
-
-                    # Strip accidental markdown fences
+                        
                     clean_code = raw_code.strip()
-                    if clean_code.startswith("```"):
-                        clean_code = "\n".join(clean_code.split("\n")[1:])
-                    if clean_code.endswith("```"):
-                        clean_code = "\n".join(clean_code.split("\n")[:-1])
-                    clean_code = clean_code.strip()
+                    if clean_code.startswith("```"): clean_code = "\n".join(clean_code.split("\n")[1:])
+                    if clean_code.endswith("```"): clean_code = "\n".join(clean_code.split("\n")[:-1])
+                    st.session_state["training_code"] = clean_code.strip()
 
-                    st.session_state["training_code"] = clean_code
+                    with st.spinner("Executing pipeline generated code..."):
+                        results, _, error_str = execute_generated_code(clean_code.strip(), df)
+                        st.session_state["training_results"] = results
+                        st.session_state["training_error"] = error_str
 
-                    with st.spinner("Executing generated code..."):
-                        results, stdout_str, error_str = execute_generated_code(clean_code, df)
-
-                    st.session_state["training_results"] = results
-                    st.session_state["training_error"] = error_str
-
-                if "training_results" in st.session_state:
-                    error = st.session_state.get("training_error")
-
-                    if error:
-                        st.error("The generated code raised an error during execution.")
-                        with st.expander("Execution Error", expanded=True):
-                            st.code(error, language="python")
-                        st.info(
-                            "This can happen if the LLM made an assumption about your data that didn't hold. "
-                            "Try clicking **Generate Code & Train** again \u2014 the LLM may produce a corrected script."
-                        )
-                    else:
-                        st.success("Training complete!")
-                        render_training_results(st.session_state["training_results"])
-
-                    if "training_code" in st.session_state:
-                        with st.expander("View Generated Code", expanded=False):
-                            st.code(st.session_state["training_code"], language="python")
-                            st.download_button(
-                                label="Download training script",
-                                data=st.session_state["training_code"],
-                                file_name=f"train_{selected_model.lower().replace(' ', '_')}.py",
-                                mime="text/plain",
-                                key="download_code_btn"
-                            )
-
+            if "training_results" in st.session_state:
+                if st.session_state.get("training_error"):
+                    st.error("Execution failed.")
+                    with st.expander("Error Stacktrace"):
+                        st.code(st.session_state["training_error"])
+                else:
+                    st.success("Model Evaluated Successfully!")
+                    render_training_results(st.session_state["training_results"])
+                    
+                if "training_code" in st.session_state:
+                    with st.expander("Review Generated Source Code"):
+                        st.code(st.session_state["training_code"], language="python")
+                        st.download_button("Download Script", st.session_state["training_code"], file_name="pipeline.py")
+            st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     st.set_page_config(page_title="AI Playground", layout="wide")

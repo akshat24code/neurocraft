@@ -254,3 +254,66 @@ def run_stop_sign_detection(image: np.ndarray) -> np.ndarray:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA,
                 )
     return image
+
+
+def run_colored_object_detection(image: np.ndarray) -> np.ndarray:
+    """Detect multiple colors including RGB, Black, White, Yellow, and Purple using HSV."""
+    image = cv2.resize(image, (640, 480))
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    # Define HSV ranges for a vast array of colors
+    colors_info = [
+        # format: (Label, BGR_BOX_COLOR, lower1, upper1, lower2, upper2)
+        ("Red", (0, 0, 255), np.array([0, 120, 70]), np.array([10, 255, 255]), 
+                              np.array([160, 120, 70]), np.array([180, 255, 255])),
+        ("Orange", (0, 140, 255), np.array([11, 120, 70]), np.array([19, 255, 255]), None, None),
+        ("Yellow", (0, 255, 255), np.array([20, 100, 100]), np.array([35, 255, 255]), None, None),
+        ("Green", (0, 255, 0), np.array([36, 50, 50]), np.array([89, 255, 255]), None, None),
+        ("Blue", (255, 0, 0), np.array([90, 50, 50]), np.array([130, 255, 255]), None, None),
+        ("Purple", (211, 0, 148), np.array([131, 50, 50]), np.array([159, 255, 255]), None, None),
+        # White: Hue doesnt matter, Saturation is very low, Value (Brightness) is very high
+        ("White", (255, 255, 255), np.array([0, 0, 200]), np.array([180, 30, 255]), None, None),
+        # Black: Hue and Saturation dont matter, Value is very low
+        ("Black", (0, 0, 0), np.array([0, 0, 0]), np.array([180, 255, 45]), None, None)
+    ]
+
+    kernel = np.ones((5, 5), "uint8")
+
+    for info in colors_info:
+        label = info[0]
+        color_bgr = info[1]
+        lower1 = info[2]
+        upper1 = info[3]
+        lower2 = info[4]
+        upper2 = info[5]
+
+        mask = cv2.inRange(hsv, lower1, upper1)
+        if lower2 is not None and upper2 is not None:
+            mask2 = cv2.inRange(hsv, lower2, upper2)
+            mask = cv2.bitwise_or(mask, mask2)
+
+        # Morphology (Smoothing)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.dilate(mask, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            # Use a higher area threshold for Black/White to avoid tracking generic shadows/reflections
+            threshold_area = 1500 if label in ["Black", "White"] else 800
+            
+            if area > threshold_area:
+                x, y, w, h = cv2.boundingRect(cnt)
+                cv2.rectangle(image, (x, y), (x + w, y + h), color_bgr, 3)
+                
+                # Determine text color for readability (Black text on White background)
+                text_color = (0, 0, 0) if label == "White" else (255, 255, 255)
+                
+                # Draw label background
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                cv2.rectangle(image, (x, y - th - 10), (x + tw + 10, y), color_bgr, -1)
+                cv2.putText(image, label, (x + 5, y - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2, cv2.LINE_AA)
+                            
+    return image

@@ -9,6 +9,7 @@ from src.application_pages.open_cv.open_cv_core import (
     run_face_count,
     run_face_detection,
     run_stop_sign_detection,
+    run_colored_object_detection,
 )
 
 
@@ -17,6 +18,7 @@ DETECTION_OPTIONS = (
     "Eye + Smile Detection",
     "Stop Sign Detection",
     "Real Time Face Count",
+    "Colored Object Detection",
 )
 
 
@@ -41,7 +43,7 @@ def prepare_detectors(detection_type: str):
     eye_cascade = None
     smile_cascade = None
 
-    if detection_type != "Stop Sign Detection":
+    if detection_type not in ["Stop Sign Detection", "Colored Object Detection"]:
         face_cascades = [
             load_cascade("default"),
             load_cascade("alt"),
@@ -66,9 +68,12 @@ def apply_detection(img, detection_type, face_cascades, eye_cascade, smile_casca
         img, _ = run_face_count(img, face_cascades)
     elif detection_type == "Stop Sign Detection":
         img = run_stop_sign_detection(img)
+    elif detection_type == "Colored Object Detection":
+        img = run_colored_object_detection(img)
     elif detection_type == "Face Detection":
         img = run_face_detection(img, face_cascades)
     else:
         img = run_eye_smile_detection(img, face_cascades, eye_cascade, smile_cascade)
 
     return img
+
