@@ -13,11 +13,15 @@ from src.assets.documents.forward_propagation import forward_propagation_docs_pa
 from src.assets.documents.mnp import mnp_docs_page
 from src.assets.documents.perceptron import perceptron_docs_page
 from src.learner_pages.backward_propagation import backward_propagation_page
-from src.learner_pages.alphabet_grid import alphabet_grid_page
 from src.learner_pages.forward_propagation import forward_propagation_page
 from src.learner_pages.hopfield import hopfield_page
 from src.learner_pages.mlp import mlp_page
 from src.learner_pages.perceptron_ui import perceptron_page
+from src.learner_pages.math_explorer import math_explorer_page
+from src.learner_pages.cnn_module import cnn_page
+from src.learner_pages.rnn_module import rnn_page
+from src.learner_pages.three_d_explorer import three_d_explorer_page
+from src.ai_mentor import render_ai_mentor
 
 
 st.set_page_config(
@@ -40,39 +44,44 @@ def _get_secret_or_env(name: str) -> str:
         return ''
 
 
+from src.learner_pages.nn_math_lab import linear_algebra_lab, calculus_lab, probability_lab, optimization_lab
+
+
 NAV_SECTIONS = {
     "Start Here": [
         ("Home", "home", "Overview and quick launch"),
+        ("Math Explorer", "Math Explorer", "All formulas, theorems, and definitions"),
         ("System Health", "System Health", "Check local setup and assets"),
+    ],
+    "Module 0: Mathematics for Neural Networks": [
+        ("Linear Algebra Lab", "Linear Algebra Lab", "Vector transformations and matrices"),
+        ("Calculus Lab", "Calculus Lab", "Derivatives and tangent lines"),
+        ("Probability Lab", "Probability Lab", "Normal distributions and density"),
+        ("Optimization Lab", "Optimization Lab", "Gradient descent simulator"),
     ],
     "Learning Lab": [
         ("Perceptron", "Perceptron", "Binary logic and decision boundaries"),
         ("Forward Propagation", "Forward Propagation", "See activations move through a network"),
-        ("Alphabet Grid Recognition", "Alphabet Grid Recognition", "Draw letters on a matrix workspace and recognize them"),
-        ("Hopfield Network", "Hopfield Network", "12x12 Alphabet associative memory and energy minimization"),
         ("Backward Propagation", "Backward Propagation", "Understand gradient updates step by step"),
         ("Multi-Layer Perceptron", "Multi-Layer Perceptron (MLP)", "Train on IRIS or your own CSV"),
+        ("Hopfield Network", "Hopfield Network", "16x16 Alphabet associative memory and energy minimization Analysis"),
+    ],
+    "Vision Lab": [
+        ("OpenCV Vision Lab", "OpenCV Hub", "Classical CV detection playground, edge detection, and object tracking"),
+        ("CNN Image Classifier", "CNN Module", "Image classification"),
     ],
     "Sequence Models": [
         ("RNN Hub", "RNN Applications", "Explore recurrent model demos"),
+        ("RNN Visualizer", "RNN Module", "Visualize sequence modeling"),
         ("RNN Next Word", "RNN Next Word Predictor", "Predict the next token from context"),
         ("RNN Sentiment", "RNN Sentiment Analyzer", "Classify review-style text"),
         ("LSTM Hub", "LSTM Applications", "Work with long-sequence flows"),
         ("LSTM Next Word", "LSTM Next Word Predictor", "Predict the next token with LSTM"),
         ("LSTM Sentiment", "LSTM Sentiment Analyzer", "Run custom LSTM sentiment analysis"),
     ],
-    "Vision + AI": [
-        ("OpenCV Hub", "OpenCV Lab", "Classical CV detection playground"),
-        ("Webcam Detection", "Webcam Detection", "Run real-time detection from camera"),
-        ("Video Detection", "Video Detection", "Analyze uploaded videos"),
-        ("Image Detection", "Image Detection", "Inspect static images"),
+    "Playground": [
         ("AI Playground", "Explore Data", "Profile data and generate training code"),
-    ],
-    "Guides": [
-        ("Perceptron Guide", "Perceptron Guide", "Reference notes and walkthrough"),
-        ("Forward Propagation Guide", "Forward Propagation Guide", "Reference notes and walkthrough"),
-        ("Backward Propagation Guide", "Backward Propagation Guide", "Reference notes and walkthrough"),
-        ("MLP Guide", "MLP Guide", "Reference notes and walkthrough"),
+        ("3D Network Explorer", "3D Explorer", "Interactive 3D architecture and signal flow"),
     ],
 }
 
@@ -604,6 +613,35 @@ def _render_sidebar(active_route: str) -> None:
         unsafe_allow_html=True,
     )
 
+    # --- LEARNING MODE AND PROGRESS ---
+    st.sidebar.markdown("<hr style='margin: 0.5rem 0; opacity: 0.1;'>", unsafe_allow_html=True)
+    
+    with st.sidebar:
+        l_mode = st.radio(
+            "Learning Mode",
+            ["Beginner", "Explorer", "Research"],
+            index=1,
+            help="Beginner: Concept Focus | Explorer: Interactive | Research: Math & Logic",
+            key="learning_mode"
+        )
+        
+        # Simple progress simulation based on active route
+        completed = st.session_state.get("completed_modules", set())
+        if active_route != "home" and active_route not in completed:
+             if st.button("Mark Module as Complete"):
+                 completed.add(active_route)
+                 st.session_state["completed_modules"] = completed
+        
+        total_modules = sum(len(items) for items in NAV_SECTIONS.values())
+        progress_val = len(completed) / total_modules if total_modules > 0 else 0
+        st.sidebar.markdown(f"<div style='font-size:0.8rem; margin-bottom:4px;'>Overall Progress: {len(completed)}/{total_modules}</div>", unsafe_allow_html=True)
+        st.sidebar.progress(progress_val)
+        
+        st.sidebar.divider()
+        st.session_state['math_explain'] = st.sidebar.checkbox("📖 Explain Mode", value=True, help="Toggle theory explanations in Math Labs")
+        
+    st.sidebar.markdown("<hr style='margin: 0.5rem 0; opacity: 0.1;'>", unsafe_allow_html=True)
+
     search_term = st.sidebar.text_input("Filter modules", placeholder="Type LSTM, guide, detection...")
     st.sidebar.caption(f"{sum(len(items) for items in NAV_SECTIONS.values())} pages available")
 
@@ -625,6 +663,9 @@ def _render_sidebar(active_route: str) -> None:
                     st.rerun()
                 st.caption(description)
 
+    # Render AI Mentor globally in the sidebar
+    render_ai_mentor(context_text=f"User is currently on module: {active_route}")
+
 
 _inject_global_theme_css()
 
@@ -638,20 +679,35 @@ _render_route_banner(route)
 
 if route == "home":
     _render_interactive_home()
+# Module 0 Routing
+elif route == "Linear Algebra Lab":
+    linear_algebra_lab(explain_mode=st.session_state.get('math_explain', True))
+elif route == "Calculus Lab":
+    calculus_lab(explain_mode=st.session_state.get('math_explain', True))
+elif route == "Probability Lab":
+    probability_lab(explain_mode=st.session_state.get('math_explain', True))
+elif route == "Optimization Lab":
+    optimization_lab(explain_mode=st.session_state.get('math_explain', True))
+elif route == "Math Explorer":
+    math_explorer_page()
 elif route == "Explore Data":
     explore_data_page()
+elif route == "3D Explorer":
+    three_d_explorer_page()
 elif route == "Perceptron":
     perceptron_page()
 elif route == "Forward Propagation":
     forward_propagation_page()
-elif route == "Alphabet Grid Recognition":
-    alphabet_grid_page()
 elif route == "Hopfield Network":
     hopfield_page()
 elif route == "Backward Propagation":
     backward_propagation_page()
 elif route == "Multi-Layer Perceptron (MLP)":
     mlp_page()
+elif route == "CNN Module":
+    cnn_page()
+elif route == "RNN Module":
+    rnn_page()
 elif route == "RNN Applications":
     rnn_application_page()
 elif route in {"RNN Next Word Predictor"}:
@@ -664,7 +720,7 @@ elif route in {"LSTM Next Word Predictor"}:
     next_word_page("LSTM")
 elif route in {"LSTM Sentiment Analyzer"}:
     rnn_sentiment_page("LSTM")
-elif route == "OpenCV Lab":
+elif route in {"OpenCV Lab", "OpenCV Hub"}:
     open_cv_landing_page()
 elif route in {"Webcam Detection", "Video Detection", "Image Detection"}:
     st.session_state["cv_mode"] = route

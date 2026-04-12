@@ -6,26 +6,30 @@ class HopfieldNetwork:
         self.weights = np.zeros((size, size))
 
     def train(self, patterns):
-        # patterns: list of flattened vectors of size `size`
-        # Using Hebbian Learning Rule
-        n = len(patterns)
+        """Train using Hebbian rule: W = sum(x x^T)"""
+        if not patterns:
+            return
+        self.weights = np.zeros((self.size, self.size))
         for p in patterns:
-            p = np.array(p).reshape(-1, 1)
-            self.weights += np.dot(p, p.T)
+            p = np.array(p).flatten()
+            self.weights += np.outer(p, p)
         
-        # Scale and remove self-connections
-        self.weights /= self.size
         np.fill_diagonal(self.weights, 0)
 
-    def predict(self, input_pattern, iterations=10):
-        # input_pattern: flattened vector
-        s = np.array(input_pattern).astype(float)
+    def predict(self, input_pattern, mode="sync", iterations=20):
+        s = np.array(input_pattern).flatten().astype(float)
         
         for _ in range(iterations):
-            # Synchronous update
-            new_s = np.sign(np.dot(self.weights, s))
-            # If all zeros (edge case), set back to 1/-1
-            new_s[new_s == 0] = 1
+            if mode == "sync":
+                new_s = np.sign(np.dot(self.weights, s))
+                new_s[new_s == 0] = 1
+            else:
+                new_s = s.copy()
+                indices = list(range(self.size))
+                np.random.shuffle(indices)
+                for i in indices:
+                    activation = np.dot(self.weights[i], new_s)
+                    new_s[i] = 1 if activation >= 0 else -1
             
             if np.array_equal(new_s, s):
                 break

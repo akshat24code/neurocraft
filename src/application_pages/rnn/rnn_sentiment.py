@@ -140,7 +140,12 @@ def predict_probability(text, model_type):
     tensor = torch.tensor([padded], dtype=torch.long)
 
     with torch.no_grad():
-        probability = model(tensor).item()
+        output = model(tensor)
+        if model_type == "RNN":
+            # RNN model forward pass returns raw logits, apply sigmoid for probability
+            probability = torch.sigmoid(output).item()
+        else:
+            probability = output.item()
         return probability
 
 
@@ -480,8 +485,3 @@ def rnn_sentiment_page(model_type="RNN"):
                 improved = improve_text_llm(text, active_key)
             st.markdown("**Refined text:**")
             st.write(improved)
-
-
-
-
-

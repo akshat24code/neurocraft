@@ -4,10 +4,10 @@ import tempfile
 import cv2
 import streamlit as st
 
-from src.application_pages.open_cv.open_cv_shared import apply_detection
+from .open_cv_shared import apply_detection
 
 
-def run_video_upload_use_case(detection_type, face_cascades, eye_cascade, smile_cascade):
+def run_video_upload_use_case(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade=None):
     st.info("Upload a video file. Detection will be applied to every frame.")
 
     uploaded_video = st.file_uploader(
@@ -68,7 +68,7 @@ def run_video_upload_use_case(detection_type, face_cascades, eye_cascade, smile_
                     break
 
                 frame = apply_detection(
-                    frame, detection_type, face_cascades, eye_cascade, smile_cascade
+                    frame, detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade
                 )
                 writer.write(frame)
                 frame_no += 1

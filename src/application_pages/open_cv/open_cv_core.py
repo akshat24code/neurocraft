@@ -14,6 +14,8 @@ Exports:
     run_face_count(frame, face_cascades)
     run_eye_smile_detection(frame, face_cascades, eye_cascade, smile_cascade)
     run_stop_sign_detection(image)
+    run_edge_detection(frame)
+    run_vehicle_detection(frame, car_cascade)
 """
 
 import os
@@ -317,3 +319,23 @@ def run_colored_object_detection(image: np.ndarray) -> np.ndarray:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2, cv2.LINE_AA)
                             
     return image
+
+
+def run_edge_detection(frame: np.ndarray) -> np.ndarray:
+    """Apply Canny edge detection."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 100, 200)
+    # Convert back to BGR for display consistency
+    return cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+
+
+def run_vehicle_detection(frame: np.ndarray, car_cascade) -> np.ndarray:
+    """Detect cars using Haar Cascade."""
+    if car_cascade is None:
+        return frame
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    cars = car_cascade.detectMultiScale(gray, 1.1, 1)
+    for (x, y, w, h) in cars:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        cv2.putText(frame, "Vehicle", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    return frame

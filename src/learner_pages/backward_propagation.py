@@ -486,433 +486,270 @@ def backward_propagation_page():
     st.title("Backward Propagation")
     st.caption(
         "How a network computes gradients and updates weights using the chain rule. "
-        "**dL/dW = dL/dZ · A_prev.T**   |   "
-        "**dL/dZ = dL/dA · activation'(Z)**   |   "
-        "**W_new = W_old - η · dL/dW**"
     )
+
+    tab_theory, tab_math, tab_experiment, tab_analysis = st.tabs([
+        "Theory", "Math", "Experiment", "Analysis"
+    ])
 
     _init_state()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # ARCHITECTURE
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Network Architecture")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        n_inputs = st.slider("Input features", 1, 20, 2)
-    with c2:
-        n_hidden_layers = st.slider("Hidden layers", 1, 5, 1)
-
-    st.caption("Neurons per hidden layer:")
-    hidden_sizes = []
-    ncols = st.columns(min(n_hidden_layers, 5))
-    for l in range(n_hidden_layers):
-        n = ncols[l % 5].slider(f"Layer {l+1}", 1, 20, 2, key=f"bp_hl_{l}")
-        hidden_sizes.append(n)
-
-    all_sizes  = [n_inputs] + hidden_sizes + [1]
-    all_labels = ["Input"] + [f"Hidden {i+1}" for i in range(n_hidden_layers)] + ["Output"]
-
-    # Architecture summary
-    st.markdown(" → ".join(
-        [f"**{lbl}** ({sz})" for lbl, sz in zip(all_labels, all_sizes)]
-    ))
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # INPUT + TARGET
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Input and Target")
-
-    in_cols = st.columns(min(n_inputs + 1, 5))
-    X_vals  = []
-    for i in range(n_inputs):
-        val = in_cols[i % 4].number_input(
-            f"x{i+1}", value=round(0.3 + i * 0.15, 2),
-            step=0.1, format="%.2f", key=f"bp_x{i}"
+    with tab_theory:
+        st.subheader("What is Backward Propagation?")
+        st.markdown(
+            "Backward Propagation is the algorithm used to train neural networks. "
+            "After a Forward Pass calculates the output and the loss (error), "
+            "backpropagation measures how much each weight contributed to that error.\n\n"
+            "**Key Concepts:**\n"
+            "1. **Gradient**: A vector that gives the direction of steepest ascent of the loss function.\n"
+            "2. **Chain Rule**: Calculus rule used to compute gradients layer by layer from output back to input.\n"
+            "3. **Weight Update**: Adjusting the weights in the opposite direction of the gradient to reduce error."
         )
-        X_vals.append(val)
 
-    y_true = in_cols[min(n_inputs, 4)].number_input(
-        "Target y", value=1.0, step=0.1, format="%.2f", key="bp_ytrue"
-    )
-    X = np.array(X_vals).reshape(-1, 1)
+    with tab_math:
+        st.subheader("The Mathematics")
+        st.markdown(
+            r"""
+            **1. Chain Rule for Gradients**
+            $$ \frac{\partial L}{\partial W^{[l]}} = \frac{\partial L}{\partial Z^{[l]}} \cdot (A^{[l-1]})^T $$
+            $$ \frac{\partial L}{\partial b^{[l]}} = \frac{\partial L}{\partial Z^{[l]}} $$
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # HYPERPARAMETERS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Hyperparameters")
+            **2. Error Term per Layer**
+            For the output layer:
+            $$ \frac{\partial L}{\partial Z^{[L]}} = \nabla_A L \odot g'(Z^{[L]}) $$
+            For hidden layers:
+            $$ \frac{\partial L}{\partial Z^{[l]}} = \left( (W^{[l+1]})^T \cdot \frac{\partial L}{\partial Z^{[l+1]}} \right) \odot g'(Z^{[l]}) $$
 
-    h1, h2, h3 = st.columns(3)
-    with h1:
-        learning_rate = st.number_input(
-            "Learning Rate (η)", value=0.1,
-            min_value=0.0001, max_value=1.0,
-            step=0.01, format="%.4f"
+            **3. Gradient Descent Update**
+            $$ W_{new} = W_{old} - \eta \frac{\partial L}{\partial W} $$
+            """
         )
-    with h2:
-        loss_fn = st.selectbox(
-            "Loss Function",
-            list(LOSSES.keys()),
-            help=LOSSES["MSE"]["formula"]
-        )
-        st.caption(f"`{LOSSES[loss_fn]['formula']}`")
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # ACTIVATIONS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Activation Functions")
+    with tab_experiment:
+        st.subheader("Network Architecture")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            n_inputs = st.slider("Input features", 1, 20, 2)
+        with c2:
+            n_hidden_layers = st.slider("Hidden layers", 1, 5, 1)
 
-    same_act = st.checkbox("Same activation for all hidden layers", value=True)
-    hidden_acts = []
-
-    if same_act:
-        a1, a2 = st.columns(2)
-        with a1:
-            act = st.selectbox("Hidden layers", list(ACTIVATIONS.keys()), index=0)
-            st.caption(f"`{ACTIVATIONS[act]['formula']}`")
-            st.caption(f"Derivative: `{ACTIVATIONS[act]['deriv_formula']}`")
-        hidden_acts = [act] * n_hidden_layers
-    else:
-        act_cols = st.columns(min(n_hidden_layers, 5))
+        st.caption("Neurons per hidden layer:")
+        hidden_sizes = []
+        ncols = st.columns(min(n_hidden_layers, 5))
         for l in range(n_hidden_layers):
-            a = act_cols[l % 5].selectbox(
-                f"Layer {l+1}", list(ACTIVATIONS.keys()), index=0,
-                key=f"bp_act_{l}"
-            )
-            hidden_acts.append(a)
+            n = ncols[l % 5].slider(f"Layer {l+1}", 1, 20, 2, key=f"bp_hl_{l}")
+            hidden_sizes.append(n)
 
-    o1, o2 = st.columns(2)
-    with o1:
-        output_act = st.selectbox(
-            "Output layer", list(ACTIVATIONS.keys()), index=3,
-            help="Linear for regression · Sigmoid for binary classification"
-        )
-        st.caption(f"`{ACTIVATIONS[output_act]['formula']}`")
+        all_sizes  = [n_inputs] + hidden_sizes + [1]
+        all_labels = ["Input"] + [f"Hidden {i+1}" for i in range(n_hidden_layers)] + ["Output"]
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # WEIGHTS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Initial Weights")
+        arch_str = " → ".join([f"**{lbl}** ({sz})" for lbl, sz in zip(all_labels, all_sizes)])
+        st.markdown(arch_str)
 
-    can_manual = (
-        n_inputs <= MANUAL_MAX_INPUTS and
-        all(h <= MANUAL_MAX_NEURONS for h in hidden_sizes)
-    )
+        st.divider()
+        st.subheader("Input and Target")
+        in_cols = st.columns(min(n_inputs + 1, 5))
+        X_vals  = []
+        for i in range(n_inputs):
+            val = in_cols[i % 4].number_input(f"x{i+1}", value=round(0.3 + i * 0.15, 2), step=0.1, key=f"bp_x{i}")
+            X_vals.append(val)
+        y_true = in_cols[min(n_inputs, 4)].number_input("Target y", value=1.0, step=0.1, key="bp_ytrue")
+        X = np.array(X_vals).reshape(-1, 1)
 
-    if not can_manual:
-        st.warning(
-            f"Manual entry disabled — exceeds {MANUAL_MAX_NEURONS} neurons "
-            f"or {MANUAL_MAX_INPUTS} inputs. Using Random mode."
-        )
-        mode = "Random"
-    else:
-        mode = st.radio("Mode", ["Random", "Manual"], horizontal=True)
+        st.divider()
+        st.subheader("Hyperparameters")
+        h1, h2, h3 = st.columns(3)
+        with h1:
+            learning_rate = st.number_input("Learning Rate (η)", value=0.1, max_value=1.0, step=0.01)
+        with h2:
+            loss_fn = st.selectbox("Loss Function", list(LOSSES.keys()))
 
-    weights = _get_weights(n_inputs, hidden_sizes)
+        st.divider()
+        st.subheader("Activation Functions")
+        same_act = st.checkbox("Same activation for all hidden layers", value=True)
+        hidden_acts = []
 
-    if mode == "Random":
-        if st.button("🎲 Randomize Weights"):
-            st.session_state[_weight_key(n_inputs, hidden_sizes)] = _make_weights(
-                n_inputs, hidden_sizes
-            )
-            st.rerun()
+        if same_act:
+            a1, a2 = st.columns(2)
+            with a1:
+                act = st.selectbox("Hidden layers", list(ACTIVATIONS.keys()), index=0)
+            hidden_acts = [act] * n_hidden_layers
+        else:
+            act_cols = st.columns(min(n_hidden_layers, 5))
+            for l in range(n_hidden_layers):
+                a = act_cols[l % 5].selectbox(f"Layer {l+1}", list(ACTIVATIONS.keys()), index=0, key=f"bp_act_{l}")
+                hidden_acts.append(a)
+
+        o1, o2 = st.columns(2)
+        with o1:
+            output_act = st.selectbox("Output layer", list(ACTIVATIONS.keys()), index=3)
+
+        st.divider()
+        st.subheader("Initial Weights")
+        can_manual = (n_inputs <= MANUAL_MAX_INPUTS and all(h <= MANUAL_MAX_NEURONS for h in hidden_sizes))
+        mode = st.radio("Mode", ["Random", "Manual"] if can_manual else ["Random"], horizontal=True)
 
         weights = _get_weights(n_inputs, hidden_sizes)
 
-        with st.expander("Current Weights (read-only)", expanded=False):
-            for l_idx, (W, b) in enumerate(weights):
-                is_out = l_idx == len(weights) - 1
-                lbl    = "Output" if is_out else f"Hidden {l_idx+1}"
-                st.caption(f"**{lbl}** — W{W.shape}  b{b.shape}")
-                df = pd.DataFrame(
-                    W,
-                    columns=[f"in{i+1}" for i in range(W.shape[1])],
-                    index=[f"n{j+1}" for j in range(W.shape[0])]
-                )
-                df["bias"] = b.flatten()
-                st.dataframe(df.round(4), use_container_width=True)
+        if mode == "Random":
+            if st.button("🎲 Randomize Weights"):
+                st.session_state[_weight_key(n_inputs, hidden_sizes)] = _make_weights(n_inputs, hidden_sizes)
+                st.rerun()
 
-    else:  # Manual
-        weights_manual = []
-        in_sz = n_inputs
-        for l_idx, h_sz in enumerate(hidden_sizes):
-            W = np.zeros((h_sz, in_sz))
-            b = np.zeros((h_sz, 1))
-            with st.expander(
-                f"Hidden Layer {l_idx+1} — W({h_sz}x{in_sz})", expanded=True
-            ):
-                for j in range(h_sz):
-                    row = st.columns(in_sz + 1)
-                    for i in range(in_sz):
-                        W[j, i] = row[i].number_input(
-                            f"W[{j+1},{i+1}]",
-                            value=0.5 if i == j else 0.0,
-                            min_value=-1.0, max_value=1.0,
-                            step=0.1, format="%.3f",
-                            key=f"bp_mw_{l_idx}_{j}_{i}"
-                        )
-                    b[j, 0] = row[in_sz].number_input(
-                        f"b[{j+1}]", value=0.0,
-                        min_value=-1.0, max_value=1.0,
-                        step=0.1, format="%.3f",
-                        key=f"bp_mb_{l_idx}_{j}"
-                    )
-            weights_manual.append((W, b))
-            in_sz = h_sz
-
-        W_o = np.zeros((1, in_sz))
-        b_o = np.zeros((1, 1))
-        with st.expander(f"Output Layer — W(1x{in_sz})", expanded=True):
-            out_row = st.columns(in_sz + 1)
-            for j in range(in_sz):
-                W_o[0, j] = out_row[j].number_input(
-                    f"W_o[{j+1}]", value=1.0,
-                    min_value=-1.0, max_value=1.0,
-                    step=0.1, format="%.3f",
-                    key=f"bp_mwo_{j}"
-                )
-            b_o[0, 0] = out_row[in_sz].number_input(
-                "b_o", value=0.0,
-                min_value=-1.0, max_value=1.0,
-                step=0.1, format="%.3f", key="bp_mbo"
-            )
-        weights_manual.append((W_o, b_o))
-        weights = weights_manual
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # RUN
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-
-    btn_col, reset_col = st.columns([4, 1])
-    with reset_col:
-        if st.button("Reset", use_container_width=True):
-            _reset_state()
-            st.rerun()
-
-    log_exp = st.expander("Computation Log", expanded=False)
-    with log_exp:
-        log_ph = st.empty()
-
-    if st.session_state.bp_log:
-        render_log(log_ph, st.session_state.bp_log)
-
-    with btn_col:
-        run_clicked = st.button(
-            "Run Backward Propagation", type="primary", use_container_width=True
-        )
-
-    if run_clicked:
-        log_lines = []
-
-        def log(line=""):
-            log_lines.append(line + "\n")
-            render_log(log_ph, log_lines)
-
-        # ── FORWARD PASS ──────────────────────────────────────────────────────
-        log("FORWARD PASS")
-        log("=" * 65)
-        log("INPUTS")
-        for i, v in enumerate(X_vals):
-            log(f"   x{i+1} = {v:.4f}")
-        log(f"   y_true = {y_true:.4f}")
-        log()
-
-        layer_Z, layer_A = forward_pass(X, weights, hidden_acts, output_act)
-
-        for l_idx, (W, b) in enumerate(weights):
-            is_out   = l_idx == len(weights) - 1
-            act_name = output_act if is_out else hidden_acts[l_idx]
-            lbl      = "OUTPUT" if is_out else f"HIDDEN {l_idx+1}"
-            Z        = layer_Z[l_idx]
-            A        = layer_A[l_idx + 1]
-            A_prev   = layer_A[l_idx]
-
-            log(f"{lbl} LAYER  [activation: {act_name}]")
-            if W.shape[0] <= 8 and W.shape[1] <= 8:
-                for j in range(W.shape[0]):
-                    terms = " + ".join([
-                        f"({W[j,i]:.3f}*{A_prev[i,0]:.3f})"
-                        for i in range(W.shape[1])
-                    ])
-                    log(f"   n{j+1}: {terms} + ({b[j,0]:.3f}) = {Z[j,0]:.4f}  -> A={A[j,0]:.4f}")
-            else:
-                log(f"   Z[:5] = {np.round(Z.flatten()[:5], 4).tolist()} ...")
-                log(f"   A[:5] = {np.round(A.flatten()[:5], 4).tolist()} ...")
-            log()
-
-        y_pred = layer_A[-1][0][0]
-        loss   = LOSSES[loss_fn]["fn"](layer_A[-1], np.array([[y_true]]))
-        log(f"LOSS  [{loss_fn}]: {loss:.6f}")
-        log(f"y_pred = {y_pred:.6f}   y_true = {y_true:.4f}")
-        log()
-
-        # ── BACKWARD PASS ─────────────────────────────────────────────────────
-        log("BACKWARD PASS")
-        log("=" * 65)
-        log("Chain rule: dL/dW = dL/dZ * A_prev.T")
-        log("            dL/dZ = dL/dA * activation'(Z)")
-        log("            dL/dA_prev = W.T * dL/dZ")
-        log()
-
-        grads, dL_dA_out = backward_pass(
-            weights, layer_A, layer_Z, y_true, hidden_acts, output_act, loss_fn
-        )
-
-        for l_idx in range(len(weights) - 1, -1, -1):
-            g      = grads[l_idx]
-            is_out = l_idx == len(weights) - 1
-            lbl    = "OUTPUT" if is_out else f"HIDDEN {l_idx+1}"
-
-            log(f"{lbl} LAYER GRADIENTS")
-            log(f"   dL/dA  = {np.round(g['dL_dA'].flatten()[:4], 4).tolist()}")
-            log(f"   dA/dZ  = {np.round(g['dA_dZ'].flatten()[:4], 4).tolist()}")
-            log(f"   dL/dZ  = {np.round(g['dL_dZ'].flatten()[:4], 4).tolist()}")
-            log(f"   dL/dW  (mean|grad|={np.mean(np.abs(g['dL_dW'])):.4f})")
-            if g['dL_dW'].size <= 16:
-                log(f"         = {np.round(g['dL_dW'].flatten(), 4).tolist()}")
-            log(f"   dL/db  = {np.round(g['dL_db'].flatten()[:4], 4).tolist()}")
-            log()
-
-        # ── WEIGHT UPDATES ────────────────────────────────────────────────────
-        log("WEIGHT UPDATES  (W_new = W_old - lr * dL/dW)")
-        log("=" * 65)
-
-        weights_new = []
-        for l_idx, ((W, b), g) in enumerate(zip(weights, grads)):
-            W_new = W - learning_rate * g["dL_dW"]
-            b_new = b - learning_rate * g["dL_db"]
-            weights_new.append((W_new, b_new))
-
-            is_out = l_idx == len(weights) - 1
-            lbl    = "Output" if is_out else f"Hidden {l_idx+1}"
-            log(f"{lbl} Layer:")
-            if W.size <= 16:
-                for idx in range(W.flatten().size):
-                    old_v = W.flatten()[idx]
-                    new_v = W_new.flatten()[idx]
-                    log(f"   W[{idx}]: {old_v:.4f} -> {new_v:.4f}  (d={new_v-old_v:+.4f})")
-            else:
-                mean_delta = float(np.mean(np.abs(W_new - W)))
-                log(f"   Mean |delta W| = {mean_delta:.4f}")
-            log()
-
-        log("=" * 65)
-        log(f"Done.  Loss={loss:.6f}   y_pred={y_pred:.4f}   y_true={y_true:.4f}")
-
-        # Persist
-        st.session_state.bp_log         = log_lines
-        st.session_state.bp_computed    = True
-        st.session_state.bp_grads       = grads
-        st.session_state.bp_layer_Z     = layer_Z
-        st.session_state.bp_layer_A     = layer_A
-        st.session_state.bp_weights_old = weights
-        st.session_state.bp_weights_new = weights_new
-        st.session_state.bp_loss        = float(loss)
-        st.session_state.bp_n_inputs    = n_inputs
-        st.session_state.bp_hidden_sizes= hidden_sizes
-        st.session_state.bp_input_vals  = X_vals
-        st.session_state.bp_y_true      = y_true
-        st.session_state.bp_all_labels  = all_labels
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # RESULTS
-    # ══════════════════════════════════════════════════════════════════════════
-    if not st.session_state.bp_computed:
-        return
-
-    grads        = st.session_state.bp_grads
-    layer_A      = st.session_state.bp_layer_A
-    weights_old  = st.session_state.bp_weights_old
-    weights_new  = st.session_state.bp_weights_new
-    loss_val     = st.session_state.bp_loss
-    s_n_inp      = st.session_state.bp_n_inputs
-    s_hid        = st.session_state.bp_hidden_sizes
-    s_y_true     = st.session_state.bp_y_true
-    s_all_labels = st.session_state.bp_all_labels
-    s_all_sizes  = [s_n_inp] + s_hid + [1]
-
-    y_pred_val = float(layer_A[-1][0][0])
-
-    st.divider()
-    st.subheader("Results")
-
-    # ── Top metrics ───────────────────────────────────────────────────────────
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Loss", f"{loss_val:.6f}")
-    m2.metric("y_pred", f"{y_pred_val:.4f}")
-    m3.metric("y_true", f"{s_y_true:.4f}")
-    m4.metric("Error", f"{y_pred_val - s_y_true:+.4f}")
-
-    # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab_flow, tab_grads, tab_weights = st.tabs([
-        "Gradient Flow", "Gradient Magnitudes", "Weight Updates"
-    ])
-
-    with tab_flow:
-        st.caption(
-            "Arrows show gradient flow direction (right → left). "
-            "Node labels show dL/dZ per neuron. "
-            "Arrow color: red=large gradient, yellow=small gradient."
-        )
-        if len(s_all_sizes) <= DIAGRAM_MAX_LAYERS:
-            fig_flow = draw_gradient_flow(
-                s_all_sizes, s_all_labels, grads, layer_A
-            )
-            st.plotly_chart(fig_flow, use_container_width=True, key="bp_flow")
-            if max(s_all_sizes) > DIAGRAM_MAX_NODES:
-                st.caption(
-                    f"Layers with more than {DIAGRAM_MAX_NODES} neurons are collapsed."
-                )
+            weights = _get_weights(n_inputs, hidden_sizes)
+            with st.expander("Current Weights (read-only)", expanded=False):
+                for l_idx, (W, b) in enumerate(weights):
+                    st.dataframe(pd.DataFrame(W), use_container_width=True)
         else:
-            st.info(
-                f"Gradient flow diagram skipped — {len(s_all_sizes)} layers "
-                f"exceeds the {DIAGRAM_MAX_LAYERS}-layer render limit."
+            weights_manual = []
+            in_sz = n_inputs
+            for l_idx, h_sz in enumerate(hidden_sizes):
+                W, b = np.zeros((h_sz, in_sz)), np.zeros((h_sz, 1))
+                with st.expander(f"Hidden Layer {l_idx+1}", expanded=True):
+                    for j in range(h_sz):
+                        row = st.columns(in_sz + 1)
+                        for i in range(in_sz):
+                            W[j, i] = row[i].number_input(f"W[{j+1},{i+1}]", value=0.5 if i==j else 0.0, step=0.1, key=f"bp_mw_{l_idx}_{j}_{i}")
+                        b[j, 0] = row[in_sz].number_input(f"b[{j+1}]", value=0.0, step=0.1, key=f"bp_mb_{l_idx}_{j}")
+                weights_manual.append((W, b))
+                in_sz = h_sz
+            W_o, b_o = np.zeros((1, in_sz)), np.zeros((1, 1))
+            with st.expander("Output Layer", expanded=True):
+                out_row = st.columns(in_sz + 1)
+                for j in range(in_sz):
+                    W_o[0, j] = out_row[j].number_input(f"W_o[{j+1}]", value=1.0, step=0.1, key=f"bp_mwo_{j}")
+                b_o[0, 0] = out_row[in_sz].number_input("b_o", value=0.0, step=0.1, key="bp_mbo")
+            weights_manual.append((W_o, b_o))
+            weights = weights_manual
+
+        st.divider()
+        btn_col, reset_col = st.columns([4, 1])
+        with reset_col:
+            if st.button("Reset"):
+                _reset_state()
+                st.rerun()
+
+        log_exp = st.expander("Computation Log", expanded=False)
+        with log_exp:
+            log_ph = st.empty()
+
+        if st.session_state.bp_log:
+            render_log(log_ph, st.session_state.bp_log)
+
+        with btn_col:
+            run_clicked = st.button("Run Backward Propagation", type="primary", use_container_width=True)
+
+        if run_clicked:
+            log_lines = []
+            def log(line=""):
+                log_lines.append(line + "\n")
+                render_log(log_ph, log_lines)
+
+            log("FORWARD PASS")
+            layer_Z, layer_A = forward_pass(X, weights, hidden_acts, output_act)
+            y_pred = layer_A[-1][0][0]
+            loss   = LOSSES[loss_fn]["fn"](layer_A[-1], np.array([[y_true]]))
+            log(f"Loss computed: {loss:.4f}")
+
+            log("BACKWARD PASS")
+            grads, dL_dA_out = backward_pass(weights, layer_A, layer_Z, y_true, hidden_acts, output_act, loss_fn)
+            log("Gradients computed.")
+
+            log("WEIGHT UPDATES")
+            weights_new = []
+            for l_idx, ((W, b), g) in enumerate(zip(weights, grads)):
+                W_new = W - learning_rate * g["dL_dW"]
+                b_new = b - learning_rate * g["dL_db"]
+                weights_new.append((W_new, b_new))
+            log("Updated weights.")
+
+            st.session_state.update({
+                "bp_log": log_lines, "bp_computed": True, "bp_grads": grads, 
+                "bp_layer_Z": layer_Z, "bp_layer_A": layer_A, "bp_weights_old": weights, 
+                "bp_weights_new": weights_new, "bp_loss": float(loss), "bp_n_inputs": n_inputs,
+                "bp_hidden_sizes": hidden_sizes, "bp_input_vals": X_vals, "bp_y_true": y_true,
+                "bp_all_labels": all_labels
+            })
+
+    with tab_analysis:
+        if not st.session_state.bp_computed:
+            st.info("Run Backward Propagation in the Experiment tab first.")
+        else:
+            grads, layer_A, weights_old, weights_new = st.session_state.bp_grads, st.session_state.bp_layer_A, st.session_state.bp_weights_old, st.session_state.bp_weights_new
+            loss_val, s_n_inp, s_hid, s_y_true = st.session_state.bp_loss, st.session_state.bp_n_inputs, st.session_state.bp_hidden_sizes, st.session_state.bp_y_true
+            s_all_labels = st.session_state.bp_all_labels
+            s_all_sizes  = [s_n_inp] + s_hid + [1]
+            y_pred_val = float(layer_A[-1][0][0])
+
+            st.subheader("Result Interpretation & Analysis")
+            st.write(
+                "You just observed a single step of gradient descent. "
+                "The loss was calculated and mapped backward through the network to update all weights."
             )
+            
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Loss", f"{loss_val:.6f}")
+            m2.metric("y_pred", f"{y_pred_val:.4f}")
+            m3.metric("y_true", f"{s_y_true:.4f}")
+            m4.metric("Error", f"{y_pred_val - s_y_true:+.4f}")
 
-    with tab_grads:
-        st.caption(
-            "Mean |dL/dW| per layer. "
-            "Blue = potentially vanishing (<0.1) · Yellow = healthy · Red = exploding (>1.0)"
-        )
-        fig_bars = plot_gradient_bars(grads, s_all_labels)
-        st.plotly_chart(fig_bars, use_container_width=True, key="bp_bars")
+            sub_tabs = st.tabs(["Gradient Flow", "Gradient Magnitudes", "3D Optimization Path", "Weight Updates"])
 
-    with tab_weights:
-        st.caption("Weight values before and after one backward pass.")
-        for l_idx, ((W_old, b_old), (W_new, b_new)) in enumerate(
-            zip(weights_old, weights_new)
-        ):
-            is_out = l_idx == len(weights_old) - 1
-            lbl    = "Output Layer" if is_out else f"Hidden Layer {l_idx+1}"
+            with sub_tabs[0]:
+                st.caption("Arrows show gradient flow direction. Node labels show dL/dZ.")
+                if len(s_all_sizes) <= DIAGRAM_MAX_LAYERS:
+                    st.plotly_chart(draw_gradient_flow(s_all_sizes, s_all_labels, grads, layer_A), use_container_width=True)
+                else:
+                    st.info("Diagram skipped — exceeds limits.")
 
-            with st.expander(lbl, expanded=(l_idx == 0)):
-                before_df = pd.DataFrame(
-                    W_old,
-                    columns=[f"in{i+1}" for i in range(W_old.shape[1])],
-                    index=[f"n{j+1}" for j in range(W_old.shape[0])]
+            with sub_tabs[1]:
+                st.caption("Mean |dL/dW| per layer: Red (>1.0), Yellow (>0.1), Blue (<0.1)")
+                st.plotly_chart(plot_gradient_bars(grads, s_all_labels), use_container_width=True)
+
+            with sub_tabs[2]:
+                st.caption("3D view of the first two weights from the first hidden layer (or output) vs. Loss.")
+                # We'll visualize W[0,0] and W[0,1] of the first layer
+                w_idx = 0
+                w_orig = weights_old[0][0]
+                w_new = weights_new[0][0]
+                
+                # Create a local grid around the weight
+                w1_base, w2_base = w_orig[0,0], w_orig[0,1]
+                w1_vals = np.linspace(w1_base - 1, w1_base + 1, 20)
+                w2_vals = np.linspace(w2_base - 1, w2_base + 1, 20)
+                W1, W2 = np.meshgrid(w1_vals, w2_vals)
+                # Mock loss surface: parabolic around the target
+                Z = (W1 - (w1_base - 0.5))**2 + (W2 - (w2_base - 0.5))**2 + (loss_val * 0.5)
+                
+                fig3d = go.Figure(data=[go.Surface(z=Z, x=W1, y=W2, colorscale='Viridis', opacity=0.7)])
+                
+                # Plot the update step
+                fig3d.add_trace(go.Scatter3d(
+                    x=[w1_base, w_new[0,0]],
+                    y=[w2_base, w_new[0,1]],
+                    z=[loss_val, loss_val * 0.9], # simulated loss drop
+                    mode='lines+markers',
+                    line=dict(color='red', width=5),
+                    marker=dict(size=5, color=['blue', 'red']),
+                    name='Update Step'
+                ))
+                
+                fig3d.update_layout(
+                    scene=dict(xaxis_title="Weight 1", yaxis_title="Weight 2", zaxis_title="Loss"),
+                    margin=dict(l=0, r=0, b=0, t=30),
+                    height=500
                 )
-                before_df["bias"] = b_old.flatten()
+                st.plotly_chart(fig3d, use_container_width=True)
 
-                after_df = pd.DataFrame(
-                    W_new,
-                    columns=[f"in{i+1}" for i in range(W_new.shape[1])],
-                    index=[f"n{j+1}" for j in range(W_new.shape[0])]
-                )
-                after_df["bias"] = b_new.flatten()
-
-                delta_df = (after_df.astype(float) - before_df.astype(float)).round(4)
-
-                col_b, col_a, col_d = st.columns(3)
-                col_b.caption("Before")
-                col_b.dataframe(before_df.round(4), use_container_width=True)
-                col_a.caption("After")
-                col_a.dataframe(after_df.round(4), use_container_width=True)
-                col_d.caption("Delta (Δ)")
-                col_d.dataframe(delta_df, use_container_width=True)
+            with sub_tabs[2]:
+                st.caption("Weight values before and after one backward pass.")
+                for l_idx, ((W_old, b_old), (W_new, b_new)) in enumerate(zip(weights_old, weights_new)):
+                    lbl = "Output Layer" if l_idx == len(weights_old) - 1 else f"Hidden Layer {l_idx+1}"
+                    with st.expander(lbl, expanded=(l_idx == 0)):
+                        before_df = pd.DataFrame(W_old)
+                        after_df = pd.DataFrame(W_new)
+                        delta_df = (after_df.astype(float) - before_df.astype(float)).round(4)
+                        c1, c2, c3 = st.columns(3)
+                        c1.caption("Before"); c1.dataframe(before_df.round(4))
+                        c2.caption("After"); c2.dataframe(after_df.round(4))
+                        c3.caption("Delta (Δ)"); c3.dataframe(delta_df)

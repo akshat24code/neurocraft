@@ -27,7 +27,7 @@ def is_local_environment() -> bool:
     return True
 
 
-def run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade):
+def run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade=None):
     st.info(
         "Local mode detected. Using cv2.VideoCapture for low-latency webcam access."
     )
@@ -86,7 +86,7 @@ def run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade):
                     continue
 
                 frame = apply_detection(
-                    frame, detection_type, face_cascades, eye_cascade, smile_cascade
+                    frame, detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade
                 )
                 frame_window.image(
                     cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
@@ -98,7 +98,7 @@ def run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade):
             status_text.info("Webcam stopped.")
 
 
-def run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascade):
+def run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade=None):
     is_local = is_local_environment()
 
     with st.expander("Environment debug info", expanded=False):
@@ -124,7 +124,7 @@ def run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascad
     use_local = st.session_state.get("force_local_webcam", is_local)
 
     if use_local:
-        run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade)
+        run_local_webcam(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade)
         return
 
     st.warning(
@@ -147,6 +147,7 @@ def run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascad
                 self._face_cascades,
                 self._eye_cascade,
                 self._smile_cascade,
+                car_cascade,
             )
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 

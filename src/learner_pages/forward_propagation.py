@@ -209,6 +209,82 @@ def draw_network(layer_sizes, layer_labels, layer_vals=None):
     return fig
 
 
+def plot_fwd_network_3d(in_dim, hidden_sizes, layer_A):
+    layers = [in_dim] + hidden_sizes + [1]
+    
+    x_coords, y_coords, z_coords = [], [], []
+    node_colors = []
+    node_sizes = []
+    hover_texts = []
+    
+    for l_idx, num_nodes in enumerate(layers):
+        z = l_idx * 2
+        activations = layer_A[l_idx].flatten() if layer_A is not None else np.zeros(num_nodes)
+        
+        for n_idx in range(num_nodes):
+            x = n_idx - (num_nodes - 1) / 2
+            y = 0
+            x_coords.append(x)
+            y_coords.append(y)
+            z_coords.append(z)
+            
+            act_val = float(activations[n_idx]) if n_idx < len(activations) else 0.0
+            hover_texts.append(f"Layer {l_idx} Node {n_idx}<br>Activation: {act_val:.4f}")
+            node_sizes.append(max(6, 6 + abs(act_val) * 15))  # Scale size with activation
+            
+            # Color intensity based on activation
+            alpha = max(0.2, min(1.0, abs(act_val)))
+            if l_idx == 0:
+                node_colors.append(f'rgba(59, 130, 246, {alpha})') # Blue
+            elif l_idx == len(layers) - 1:
+                node_colors.append(f'rgba(239, 68, 68, {alpha})') # Red
+            else:
+                node_colors.append(f'rgba(16, 185, 129, {alpha})') # Green
+
+    fig = go.Figure()
+    
+    # Edges
+    edge_x, edge_y, edge_z = [], [], []
+    offset = 0
+    layer_offsets = []
+    for num_nodes in layers:
+        layer_offsets.append(offset)
+        offset += num_nodes
+
+    for l_idx in range(len(layers) - 1):
+        num_curr = layers[l_idx]
+        num_next = layers[l_idx + 1]
+        start_idx = layer_offsets[l_idx]
+        next_idx = layer_offsets[l_idx + 1]
+        
+        for i in range(num_curr):
+            for j in range(num_next):
+                edge_x.extend([x_coords[start_idx + i], x_coords[next_idx + j], None])
+                edge_y.extend([y_coords[start_idx + i], y_coords[next_idx + j], None])
+                edge_z.extend([z_coords[start_idx + i], z_coords[next_idx + j], None])
+                
+    fig.add_trace(go.Scatter3d(
+        x=edge_x, y=edge_y, z=edge_z,
+        mode='lines', line=dict(color='rgba(156, 163, 175, 0.2)', width=1), hoverinfo='none'
+    ))
+
+    fig.add_trace(go.Scatter3d(
+        x=x_coords, y=y_coords, z=z_coords,
+        mode='markers', text=hover_texts, hoverinfo='text',
+        marker=dict(size=node_sizes, color=node_colors, line=dict(width=1, color='white')),
+    ))
+    
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            camera=dict(projection=dict(type='orthographic'))
+        ),
+        title="3D Flow (Node Size/Color = Activation magnitude)",
+        showlegend=False, margin=dict(l=0, r=0, b=0, t=30), height=400
+    )
+    return fig
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # LOG RENDERER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -310,353 +386,233 @@ def forward_propagation_page():
     st.caption(
         "How inputs flow layer-by-layer through a network to produce output. "
         "No weight updates — pure inference. "
-        "Each layer: **Z = W · A_prev + b**,  then  **A = activation(Z)**"
     )
+
+    tab_theory, tab_math, tab_experiment, tab_3d, tab_analysis = st.tabs([
+        "Theory", "Math", "Experiment", "3D Visualization", "Analysis"
+    ])
 
     _init_state()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # ARCHITECTURE
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Network Architecture")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        n_inputs = st.slider("Input features", 1, 20, 2)
-    with c2:
-        n_hidden_layers = st.slider("Hidden layers", 1, 5, 1)
-
-    # Per-layer neuron counts
-    st.caption("Neurons per hidden layer:")
-    hidden_sizes = []
-    ncols = st.columns(min(n_hidden_layers, 5))
-    for l in range(n_hidden_layers):
-        n = ncols[l % 5].slider(f"Layer {l+1}", 1, 20, 2, key=f"fp_hl_{l}")
-        hidden_sizes.append(n)
-
-    all_sizes  = [n_inputs] + hidden_sizes + [1]
-    all_labels = ["Input"] + [f"Hidden {i+1}" for i in range(n_hidden_layers)] + ["Output"]
-
-    # Architecture text — always shown
-    arch_str = " → ".join(
-        [f"**{lbl}** ({sz})" for lbl, sz in zip(all_labels, all_sizes)]
-    )
-    st.markdown(arch_str)
-
-    # Diagram — only when within render limits
-    can_draw = len(all_sizes) <= DIAGRAM_MAX_LAYERS
-    if can_draw:
-        st.plotly_chart(
-            draw_network(all_sizes, all_labels),
-            use_container_width=True,
-            key="fp_arch_preview"
-        )
-        if max(all_sizes) > DIAGRAM_MAX_NODES:
-            st.caption(
-                f"Layers with more than {DIAGRAM_MAX_NODES} neurons are collapsed. "
-                f"Badge (n=X) shows true count."
-            )
-    else:
-        st.info(
-            f"Diagram skipped — {len(all_sizes)} total layers exceeds the "
-            f"{DIAGRAM_MAX_LAYERS}-layer render limit. Computation runs on full network."
+    with tab_theory:
+        st.subheader("What is Forward Propagation?")
+        st.markdown(
+            "Forward Propagation is the core operation of a neural network during inference. "
+            "Data flows from the input layer, through hidden layers, to the output layer.\n\n"
+            "At each neuron, two things happen:\n"
+            "1. **Linear Transformation**: A weighted sum is computed from all incoming connections plus a bias.\n"
+            "2. **Non-linear Activation**: This sum is passed through an activation function to introduce non-linearity."
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # INPUTS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Input Values")
+    with tab_math:
+        st.subheader("The Mathematics")
+        st.markdown(
+            r"""
+            For a given layer $l$, let $W^{[l]}$ be the weight matrix, $b^{[l]}$ the bias vector, and $A^{[l-1]}$ the activation from the previous layer (or $X$ for layer 1).
 
-    in_cols = st.columns(min(n_inputs, 5))
-    X_vals = []
-    for i in range(n_inputs):
-        val = in_cols[i % 5].number_input(
-            f"x{i+1}",
-            value=round(0.3 + i * 0.15, 2),
-            step=0.1, format="%.2f",
-            key=f"fp_x{i}"
+            **1. Weighted Sum ($Z^{[l]}$)**
+            $$ Z^{[l]} = W^{[l]} \cdot A^{[l-1]} + b^{[l]} $$
+
+            **2. Activation ($A^{[l]}$)**
+            $$ A^{[l]} = g(Z^{[l]}) $$
+            where $g()$ is the assigned activation function (Sigmoid, ReLU, Tanh, etc).
+            """
         )
-        X_vals.append(val)
-    X = np.array(X_vals).reshape(-1, 1)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # ACTIVATIONS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Activation Functions")
+    with tab_experiment:
+        st.subheader("Network Architecture")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            n_inputs = st.slider("Input features", 1, 20, 2)
+        with c2:
+            n_hidden_layers = st.slider("Hidden layers", 1, 5, 1)
 
-    same_act = st.checkbox("Same activation for all hidden layers", value=True)
-    hidden_acts = []
-
-    if same_act:
-        a_col1, a_col2 = st.columns(2)
-        with a_col1:
-            act = st.selectbox("Hidden layers", list(ACTIVATIONS.keys()), index=0)
-            st.caption(f"`{ACTIVATIONS[act]['formula']}`")
-        hidden_acts = [act] * n_hidden_layers
-    else:
-        st.caption("Set activation per hidden layer:")
-        act_cols = st.columns(min(n_hidden_layers, 5))
+        st.caption("Neurons per hidden layer:")
+        hidden_sizes = []
+        ncols = st.columns(min(n_hidden_layers, 5))
         for l in range(n_hidden_layers):
-            a = act_cols[l % 5].selectbox(
-                f"Layer {l+1}", list(ACTIVATIONS.keys()), index=0,
-                key=f"fp_act_{l}"
-            )
-            hidden_acts.append(a)
+            n = ncols[l % 5].slider(f"Layer {l+1}", 1, 20, 2, key=f"fp_hl_{l}")
+            hidden_sizes.append(n)
 
-    out_col1, out_col2 = st.columns(2)
-    with out_col1:
-        output_act = st.selectbox(
-            "Output layer",
-            list(ACTIVATIONS.keys()), index=3,
-            help="Linear for regression · Sigmoid for binary classification"
-        )
-        st.caption(f"`{ACTIVATIONS[output_act]['formula']}`")
+        all_sizes  = [n_inputs] + hidden_sizes + [1]
+        all_labels = ["Input"] + [f"Hidden {i+1}" for i in range(n_hidden_layers)] + ["Output"]
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # WEIGHTS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Weights")
+        arch_str = " → ".join([f"**{lbl}** ({sz})" for lbl, sz in zip(all_labels, all_sizes)])
+        st.markdown(arch_str)
 
-    can_manual = (
-        n_inputs <= MANUAL_MAX_INPUTS and
-        all(h <= MANUAL_MAX_NEURONS for h in hidden_sizes)
-    )
+        can_draw = len(all_sizes) <= DIAGRAM_MAX_LAYERS
+        if can_draw:
+            st.plotly_chart(draw_network(all_sizes, all_labels), use_container_width=True, key="fp_arch_preview")
+            if max(all_sizes) > DIAGRAM_MAX_NODES:
+                st.caption(f"Layers with > {DIAGRAM_MAX_NODES} neurons collapsed.")
+        else:
+            st.info(f"Diagram skipped — > {DIAGRAM_MAX_LAYERS} layers.")
 
-    if not can_manual:
-        st.warning(
-            f"Manual entry is disabled — network exceeds "
-            f"{MANUAL_MAX_NEURONS} neurons or {MANUAL_MAX_INPUTS} inputs per layer. "
-            f"Using Random mode."
-        )
-        mode = "Random"
-    else:
-        mode = st.radio("Mode", ["Random", "Manual"], horizontal=True)
+        st.divider()
+        st.subheader("Input Values")
+        in_cols = st.columns(min(n_inputs, 5))
+        X_vals = []
+        for i in range(n_inputs):
+            val = in_cols[i % 5].number_input(f"x{i+1}", value=round(0.3 + i * 0.15, 2), step=0.1, key=f"fp_x{i}")
+            X_vals.append(val)
+        X = np.array(X_vals).reshape(-1, 1)
 
-    weights = _get_weights(n_inputs, hidden_sizes)
+        st.divider()
+        st.subheader("Activation Functions")
+        same_act = st.checkbox("Same activation for all hidden layers", value=True)
+        hidden_acts = []
 
-    if mode == "Random":
-        if st.button("🎲 Randomize Weights"):
-            st.session_state[_weight_key(n_inputs, hidden_sizes)] = _make_weights(
-                n_inputs, hidden_sizes
-            )
-            st.rerun()
+        if same_act:
+            a_col1, a_col2 = st.columns(2)
+            with a_col1:
+                act = st.selectbox("Hidden layers", list(ACTIVATIONS.keys()), index=0)
+            hidden_acts = [act] * n_hidden_layers
+        else:
+            act_cols = st.columns(min(n_hidden_layers, 5))
+            for l in range(n_hidden_layers):
+                a = act_cols[l % 5].selectbox(f"Layer {l+1}", list(ACTIVATIONS.keys()), index=0, key=f"fp_act_{l}")
+                hidden_acts.append(a)
+
+        out_col1, out_col2 = st.columns(2)
+        with out_col1:
+            output_act = st.selectbox("Output layer", list(ACTIVATIONS.keys()), index=3)
+
+        st.divider()
+        st.subheader("Weights")
+
+        can_manual = (n_inputs <= MANUAL_MAX_INPUTS and all(h <= MANUAL_MAX_NEURONS for h in hidden_sizes))
+        mode = st.radio("Mode", ["Random", "Manual"] if can_manual else ["Random"], horizontal=True)
 
         weights = _get_weights(n_inputs, hidden_sizes)
 
-        with st.expander("Current Weights (read-only)", expanded=False):
-            for l_idx, (W, b) in enumerate(weights):
-                is_out = l_idx == len(weights) - 1
-                lbl    = "Output Layer" if is_out else f"Hidden Layer {l_idx+1}"
-                st.caption(f"**{lbl}** — W{W.shape}  b{b.shape}")
-                df = pd.DataFrame(
-                    W,
-                    columns=[f"in{i+1}" for i in range(W.shape[1])],
-                    index=[f"n{j+1}" for j in range(W.shape[0])]
-                )
-                df["bias"] = b.flatten()
-                st.dataframe(df.round(4), use_container_width=True)
+        if mode == "Random":
+            if st.button("🎲 Randomize Weights"):
+                st.session_state[_weight_key(n_inputs, hidden_sizes)] = _make_weights(n_inputs, hidden_sizes)
+                st.rerun()
 
-    else:  # Manual
-        weights_manual = []
-        in_sz = n_inputs
+            weights = _get_weights(n_inputs, hidden_sizes)
+            with st.expander("Current Weights (read-only)", expanded=False):
+                for l_idx, (W, b) in enumerate(weights):
+                    st.dataframe(pd.DataFrame(W), use_container_width=True)
 
-        for l_idx, h_sz in enumerate(hidden_sizes):
-            W = np.zeros((h_sz, in_sz))
-            b = np.zeros((h_sz, 1))
-            with st.expander(
-                f"Hidden Layer {l_idx+1} — W({h_sz}x{in_sz}) + b", expanded=True
-            ):
-                for j in range(h_sz):
-                    row = st.columns(in_sz + 1)
-                    for i in range(in_sz):
-                        W[j, i] = row[i].number_input(
-                            f"W[{j+1},{i+1}]",
-                            value=0.5 if i == j else 0.0,
-                            min_value=-1.0, max_value=1.0,
-                            step=0.1, format="%.3f",
-                            key=f"fp_mw_{l_idx}_{j}_{i}"
-                        )
-                    b[j, 0] = row[in_sz].number_input(
-                        f"b[{j+1}]", value=0.0,
-                        min_value=-1.0, max_value=1.0,
-                        step=0.1, format="%.3f",
-                        key=f"fp_mb_{l_idx}_{j}"
-                    )
-            weights_manual.append((W, b))
-            in_sz = h_sz
+        else:
+            weights_manual = []
+            in_sz = n_inputs
+            for l_idx, h_sz in enumerate(hidden_sizes):
+                W, b = np.zeros((h_sz, in_sz)), np.zeros((h_sz, 1))
+                with st.expander(f"Hidden Layer {l_idx+1}", expanded=True):
+                    for j in range(h_sz):
+                        row = st.columns(in_sz + 1)
+                        for i in range(in_sz):
+                            W[j, i] = row[i].number_input(f"W[{j+1},{i+1}]", value=0.5 if i==j else 0.0, step=0.1, key=f"mw_{l_idx}_{j}_{i}")
+                        b[j, 0] = row[in_sz].number_input(f"b[{j+1}]", value=0.0, step=0.1, key=f"mb_{l_idx}_{j}")
+                weights_manual.append((W, b))
+                in_sz = h_sz
+            W_o, b_o = np.zeros((1, in_sz)), np.zeros((1, 1))
+            with st.expander("Output Layer", expanded=True):
+                out_row = st.columns(in_sz + 1)
+                for j in range(in_sz):
+                    W_o[0, j] = out_row[j].number_input(f"W_o[{j+1}]", value=1.0, step=0.1, key=f"mwo_{j}")
+                b_o[0, 0] = out_row[in_sz].number_input("b_o", value=0.0, step=0.1, key="mbo")
+            weights_manual.append((W_o, b_o))
+            weights = weights_manual
 
-        # Output
-        W_o = np.zeros((1, in_sz))
-        b_o = np.zeros((1, 1))
-        with st.expander(f"Output Layer — W(1x{in_sz}) + b", expanded=True):
-            out_row = st.columns(in_sz + 1)
-            for j in range(in_sz):
-                W_o[0, j] = out_row[j].number_input(
-                    f"W_o[{j+1}]", value=1.0,
-                    min_value=-1.0, max_value=1.0,
-                    step=0.1, format="%.3f",
-                    key=f"fp_mwo_{j}"
-                )
-            b_o[0, 0] = out_row[in_sz].number_input(
-                "b_o", value=0.0,
-                min_value=-1.0, max_value=1.0,
-                step=0.1, format="%.3f",
-                key="fp_mbo"
-            )
-        weights_manual.append((W_o, b_o))
-        weights = weights_manual
+        st.divider()
+        btn_col, reset_col = st.columns([4, 1])
+        with reset_col:
+            if st.button("Reset"):
+                _reset_state()
+                st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # RUN
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
+        log_exp = st.expander("Computation Log", expanded=False)
+        with log_exp:
+            log_ph = st.empty()
 
-    btn_col, reset_col = st.columns([4, 1])
-    with reset_col:
-        if st.button("Reset", use_container_width=True):
-            _reset_state()
-            st.rerun()
+        if st.session_state.fp_log:
+            render_log(log_ph, st.session_state.fp_log)
 
-    log_exp = st.expander("Computation Log", expanded=False)
-    with log_exp:
-        log_ph = st.empty()
+        with btn_col:
+            run_clicked = st.button("Run Forward Propagation", type="primary", use_container_width=True)
 
-    if st.session_state.fp_log:
-        render_log(log_ph, st.session_state.fp_log)
+        if run_clicked:
+            log_lines = []
+            def log(line=""):
+                log_lines.append(line + "\n")
+                render_log(log_ph, log_lines)
 
-    with btn_col:
-        run_clicked = st.button(
-            "Run Forward Propagation", type="primary", use_container_width=True
-        )
+            log("FORWARD PROPAGATION")
+            layer_Z, layer_A = forward_pass(X, weights, hidden_acts, output_act)
+            log("Running Layers...")
+            for idx in range(len(weights)):
+                log(f"Layer {idx+1} computed.")
+            log(f"Final Output: {layer_A[-1][0][0]:.6f}")
 
-    if run_clicked:
-        log_lines = []
+            st.session_state.update({
+                "fp_log": log_lines, "fp_computed": True, "fp_layer_Z": layer_Z, "fp_layer_A": layer_A,
+                "fp_n_inputs": n_inputs, "fp_hidden_sizes": hidden_sizes, "fp_input_vals": X_vals
+            })
 
-        def log(line=""):
-            log_lines.append(line + "\n")
-            render_log(log_ph, log_lines)
-
-        log("FORWARD PROPAGATION")
-        log("=" * 65)
-        log("INPUTS")
-        for i, v in enumerate(X_vals):
-            log(f"   x{i+1} = {v:.4f}")
-        log()
-
-        layer_Z, layer_A = forward_pass(X, weights, hidden_acts, output_act)
-
-        for l_idx, (W, b) in enumerate(weights):
-            is_out   = l_idx == len(weights) - 1
-            act_name = output_act if is_out else hidden_acts[l_idx]
-            lbl      = "OUTPUT LAYER" if is_out else f"HIDDEN LAYER {l_idx+1}"
-            A_prev   = layer_A[l_idx]
-            Z        = layer_Z[l_idx]
-            A        = layer_A[l_idx + 1]
-
-            log(f"{lbl}  [activation: {act_name}]")
-            log(f"   W: {W.shape}   b: {b.shape}   Z = W * A_prev + b")
-
-            # Detailed breakdown only for small layers
-            if W.shape[0] <= 8 and W.shape[1] <= 8:
-                for j in range(W.shape[0]):
-                    terms = " + ".join([
-                        f"({W[j,i]:.3f}*{A_prev[i,0]:.3f})"
-                        for i in range(W.shape[1])
-                    ])
-                    log(f"   n{j+1}: {terms} + ({b[j,0]:.3f}) = {Z[j,0]:.4f}  ->  {act_name}={A[j,0]:.4f}")
+    with tab_3d:
+        if not st.session_state.fp_computed:
+            st.info("Run the Forward Propagation in the Experiment tab first.")
+        else:
+            in_dim = st.session_state.fp_n_inputs
+            h_sizes = st.session_state.fp_hidden_sizes
+            layer_A = st.session_state.fp_layer_A
+            st.subheader("3D Network Flow")
+            st.caption("Neurons light up and scale based on their activation values.")
+            
+            can_draw = (in_dim <= 10 and all(h <= 10 for h in h_sizes))
+            if can_draw:
+                st.plotly_chart(plot_fwd_network_3d(in_dim, h_sizes, layer_A), use_container_width=True)
             else:
-                log(f"   Z[:5] = {np.round(Z.flatten()[:5], 4).tolist()} ...")
-                log(f"   A[:5] = {np.round(A.flatten()[:5], 4).tolist()} ...")
-            log()
+                st.warning("Network is too large to render efficiently in 3D.")
 
-        log("=" * 65)
-        log(f"Final Output (y_hat): {layer_A[-1][0][0]:.6f}")
+    with tab_analysis:
+        if not st.session_state.fp_computed:
+            st.info("Run the Forward Propagation in the Experiment tab first.")
+        else:
+            st.subheader("Analysis & Interpretation")
+            layer_Z, layer_A = st.session_state.fp_layer_Z, st.session_state.fp_layer_A
+            inp_vals = st.session_state.fp_input_vals
+            s_n_inp = st.session_state.fp_n_inputs
+            s_hid = st.session_state.fp_hidden_sizes
+            s_all_sz = [s_n_inp] + s_hid + [1]
+            s_all_lbl = ["Input"] + [f"Hidden {i+1}" for i in range(len(s_hid))] + ["Output"]
 
-        st.session_state.fp_log          = log_lines
-        st.session_state.fp_computed     = True
-        st.session_state.fp_layer_Z      = layer_Z
-        st.session_state.fp_layer_A      = layer_A
-        st.session_state.fp_n_inputs     = n_inputs
-        st.session_state.fp_hidden_sizes = hidden_sizes
-        st.session_state.fp_input_vals   = X_vals
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # RESULTS
-    # ══════════════════════════════════════════════════════════════════════════
-    if not st.session_state.fp_computed:
-        return
-
-    layer_Z     = st.session_state.fp_layer_Z
-    layer_A     = st.session_state.fp_layer_A
-    inp_vals    = st.session_state.fp_input_vals
-    s_n_inp     = st.session_state.fp_n_inputs
-    s_hid       = st.session_state.fp_hidden_sizes
-    s_all_sz    = [s_n_inp] + s_hid + [1]
-    s_all_lbl   = ["Input"] + [f"Hidden {i+1}" for i in range(len(s_hid))] + ["Output"]
-
-    st.divider()
-    st.subheader("Results")
-
-    # Diagram with values
-    diagram_vals = [inp_vals]
-    for i in range(len(s_hid)):
-        diagram_vals.append(layer_A[i + 1].flatten().tolist())
-    diagram_vals.append([float(layer_A[-1][0][0])])
-
-    if len(s_all_sz) <= DIAGRAM_MAX_LAYERS:
-        st.markdown("**Network after Forward Pass**")
-        st.plotly_chart(
-            draw_network(s_all_sz, s_all_lbl, layer_vals=diagram_vals),
-            use_container_width=True,
-            key="fp_result_net"
-        )
-        if max(s_all_sz) > DIAGRAM_MAX_NODES:
-            st.caption(
-                f"Layers with more than {DIAGRAM_MAX_NODES} neurons are collapsed. "
-                f"Badge shows true neuron count."
+            st.success("Successfully computed forward propagation!")
+            st.write(
+                "Notice how the inputs change at every layer. The chosen activations map the resulting values. "
+                "Because there are no updates or learning involved, this is simply the network predicting an output "
+                "from a given input vector using static weights."
             )
-    else:
-        st.info(
-            f"Diagram skipped ({len(s_all_sz)} layers > {DIAGRAM_MAX_LAYERS} limit)."
-        )
 
-    # Architecture summary
-    st.markdown(" → ".join(
-        [f"**{l}** ({s})" for l, s in zip(s_all_lbl, s_all_sz)]
-    ))
+            diagram_vals = [inp_vals]
+            for i in range(len(s_hid)):
+                diagram_vals.append(layer_A[i + 1].flatten().tolist())
+            diagram_vals.append([float(layer_A[-1][0][0])])
 
-    # Per-layer tabs
-    st.markdown("**Layer-by-Layer Output**")
-    tab_names = [f"Hidden {i+1}" for i in range(len(s_hid))] + ["Output"]
-    tabs      = st.tabs(tab_names)
+            if len(s_all_sz) <= DIAGRAM_MAX_LAYERS:
+                st.markdown("**Network Outputs (Per layer)**")
+                st.plotly_chart(draw_network(s_all_sz, s_all_lbl, layer_vals=diagram_vals), use_container_width=True)
 
-    for l_idx, tab in enumerate(tabs):
-        with tab:
-            Z      = layer_Z[l_idx]
-            A      = layer_A[l_idx + 1]
-            is_out = l_idx == len(tab_names) - 1
+            st.markdown("**Layer-by-Layer Output**")
+            tab_names = [f"Hidden {i+1}" for i in range(len(s_hid))] + ["Output"]
+            tabs = st.tabs(tab_names)
 
-            if is_out:
-                c1, c2 = st.columns(2)
-                c1.metric("Z (weighted sum)", f"{Z[0,0]:.4f}")
-                c2.metric("y_hat (output)",   f"{A[0,0]:.4f}")
-                interp = (
-                    f"Class {'1' if A[0,0] >= 0.5 else '0'} (threshold 0.5)"
-                    if output_act == "Sigmoid"
-                    else "Regression value"
-                )
-                st.info(f"**Output = {A[0,0]:.4f}** — {interp}")
-            else:
-                n_neur = Z.shape[0]
-                st.caption(
-                    f"{n_neur} neurons · activation: {hidden_acts[l_idx]}"
-                )
-                mc = st.columns(min(n_neur, 5))
-                for j in range(n_neur):
-                    with mc[j % 5]:
-                        st.metric(f"Z{j+1}", f"{Z[j,0]:.4f}")
-                        st.metric(f"A{j+1}", f"{A[j,0]:.4f}")
+            for l_idx, tab in enumerate(tabs):
+                with tab:
+                    Z, A = layer_Z[l_idx], layer_A[l_idx + 1]
+                    is_out = l_idx == len(tab_names) - 1
+
+                    if is_out:
+                        c1, c2 = st.columns(2)
+                        c1.metric("Z", f"{Z[0,0]:.4f}")
+                        c2.metric("Output", f"{A[0,0]:.4f}")
+                    else:
+                        st.caption(f"{Z.shape[0]} neurons")
+                        cols = st.columns(min(Z.shape[0], 5))
+                        for j in range(Z.shape[0]):
+                            with cols[j % 5]:
+                                st.metric(f"Z{j+1}", f"{Z[j,0]:.4f}")
+                                st.metric(f"A{j+1}", f"{A[j,0]:.4f}")

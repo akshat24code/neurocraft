@@ -1,9 +1,12 @@
 import streamlit as st
 
-from src.application_pages.open_cv.open_cv_image import run_image_use_case
-from src.application_pages.open_cv.open_cv_shared import DETECTION_OPTIONS, prepare_detectors
-from src.application_pages.open_cv.open_cv_video import run_video_upload_use_case
-from src.application_pages.open_cv.open_cv_webcam import run_webcam_use_case
+from .open_cv_image import run_image_use_case
+from .open_cv_shared import (
+    DETECTION_OPTIONS,
+    prepare_detectors,
+)
+from .open_cv_video import run_video_upload_use_case
+from .open_cv_webcam import run_webcam_use_case
 
 
 INPUT_OPTIONS = ("Webcam", "Upload Video", "Image")
@@ -58,6 +61,18 @@ DETECTION_META: dict[str, dict[str, str]] = {
         ),
         "tech": "HSV Masking · Morphological Opening · findContours",
         "tips": "Ensure good lighting. The tracker looks for specifically strong reds, blues, and greens.",
+    },
+    "Edge Detection": {
+        "emoji": "📐",
+        "tagline": "Canny Edge Discovery",
+        "long": "Uses the **Canny algorithm** to find structural outlines. Great for seeing the 'skeleton' of objects in real-time.",
+        "tech": "cv2.Canny · Multi-stage algorithm",
+    },
+    "Vehicle Detection": {
+        "emoji": "🚗",
+        "tagline": "Car & Traffic Detection",
+        "long": "Detects moving or stationary vehicles using specialized Haar Cascades trained on traffic data.",
+        "tech": "HaarCascade_cars · detectMultiScale",
     },
 }
 
@@ -236,10 +251,11 @@ def open_cv_landing_page():
     _render_detection_cards()
 
     detection_type = st.session_state.opencv_det_type
+    
     detectors = prepare_detectors(detection_type)
     if detectors is None:
         return
-    face_cascades, eye_cascade, smile_cascade = detectors
+    face_cascades, eye_cascade, smile_cascade, car_cascade = detectors
 
     st.divider()
     _render_input_cards()
@@ -250,13 +266,14 @@ def open_cv_landing_page():
     st.caption("Live workspace — controls and preview appear below.")
 
     if mode == "Webcam":
-        run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascade)
+        run_webcam_use_case(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade)
     elif mode == "Upload Video":
         run_video_upload_use_case(
             detection_type,
             face_cascades,
             eye_cascade,
             smile_cascade,
+            car_cascade,
         )
     else:
-        run_image_use_case(detection_type, face_cascades, eye_cascade, smile_cascade)
+        run_image_use_case(detection_type, face_cascades, eye_cascade, smile_cascade, car_cascade)

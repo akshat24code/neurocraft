@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import warnings
+from src.utils.result_interpreter import interpret_results
 
 warnings.filterwarnings("ignore")
 
@@ -324,6 +325,47 @@ def plot_loss_curve(losses):
     )
     return fig
 
+def plot_loss_surface_3d(X, y, w_final, b_final):
+    # Generating meshgrid for w1 and w2 around the final weights
+    w1_range = np.linspace(w_final[0] - 2, w_final[0] + 2, 20)
+    w2_range = np.linspace(w_final[1] - 2, w_final[1] + 2, 20)
+    W1, W2 = np.meshgrid(w1_range, w2_range)
+    Z = np.zeros_like(W1)
+    
+    for i in range(W1.shape[0]):
+        for j in range(W1.shape[1]):
+            w_temp = np.array([W1[i, j], W2[i, j]])
+            if len(w_temp) < X.shape[1]:
+                # If more than 2 features, pad with final weights
+                pad = w_final[2:]
+                w_temp = np.concatenate([w_temp, pad])
+            
+            error = 0
+            for xi, yi in zip(X, y):
+                pred = 1 if (np.dot(w_temp, xi) + b_final) >= 0 else 0
+                error += abs(yi - pred)
+            Z[i, j] = error
+
+    fig = go.Figure(data=[go.Surface(z=Z, x=W1, y=W2, colorscale='Viridis', opacity=0.8)])
+    
+    # Mark the final weight
+    fig.add_trace(go.Scatter3d(
+        x=[w_final[0]], y=[w_final[1]], z=[0],
+        mode='markers', marker=dict(size=8, color='red', symbol='diamond'),
+        name='Final Weights'
+    ))
+    
+    fig.update_layout(
+        title="3D Loss Surface (w1 vs w2 vs Loss)",
+        scene=dict(
+            xaxis_title='Weight 1',
+            yaxis_title='Weight 2',
+            zaxis_title='Loss',
+        ),
+        margin=dict(l=0, r=0, b=0, t=40)
+    )
+    return fig
+
 
 def plot_decision_boundary_2d(X, y, w, b, feature_cols, title="Decision Boundary"):
     df = pd.DataFrame(X, columns=feature_cols)
@@ -446,319 +488,239 @@ def perceptron_page():
         "and updates: **Δw = η(y−ŷ)x**, **Δb = η(y−ŷ)**"
     )
 
-    _init_state()
-
-    X, y, feature_cols, gate_name = None, None, ["X1", "X2"], "Custom"
-    data_ready = False
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # DATA SOURCE
-    # ══════════════════════════════════════════════════════════════════════════
-    data_source = st.radio("Select Data Source", ["Logic Gate", "Upload CSV"], horizontal=True)
-
-    # ── LOGIC GATE ─────────────────────────────────────────────────────────────
-    if data_source == "Logic Gate":
-        gate_name = st.selectbox("Select Logic Gate", list(GATES.keys()))
-        gate_info = GATES[gate_name]
-        raw = gate_info["data"]
-        X = np.array([[r[0], r[1]] for r in raw], dtype=float)
-        y = np.array([r[2] for r in raw], dtype=int)
-        feature_cols = ["X1", "X2"]
-        data_ready = True
-
-        if not gate_info["separable"]:
-            st.warning(
-                "**XOR is not linearly separable.** A single perceptron cannot "
-                "achieve zero error. This is a classic demonstration of perceptron limits — "
-                "XOR requires a multi-layer network (MLP) to solve."
-            )
-
-        if st.session_state.last_gate != gate_name:
-            st.session_state.last_gate = gate_name
-            _reset_state()
-
-        st.subheader(f"{gate_name} Truth Table")
-        st.dataframe(
-            pd.DataFrame(raw, columns=["X1", "X2", "Output"]),
-            hide_index=True, use_container_width=True
-        )
-
-    # ── CSV UPLOAD ─────────────────────────────────────────────────────────────
-    else:
-        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
-
-        if uploaded_file is None:
-            st.info(
-                "Upload a CSV with numeric features and a binary target column. "
-                "Supports any number of features. Target must have exactly 2 classes."
-            )
-        else:
-            # Parse
-            try:
-                df_uploaded = pd.read_csv(uploaded_file)
-            except Exception as e:
-                st.error(f"Could not parse CSV: {e}")
-                return
-
-            # Shape guard
-            if df_uploaded.empty:
-                st.error("The uploaded CSV is empty.")
-                return
-            if len(df_uploaded.columns) < 2:
-                st.error("CSV must have at least 2 columns (1 feature + 1 target).")
-                return
-
-            st.subheader("Data Preview")
-            st.dataframe(df_uploaded.head(10), hide_index=True, use_container_width=True)
-
-            with st.expander("Dataset Statistics", expanded=False):
-                st.write(f"**Shape:** {df_uploaded.shape[0]} rows × {df_uploaded.shape[1]} columns")
-                st.dataframe(df_uploaded.describe().round(4), use_container_width=True)
-
-            # Column selection
-            st.subheader("Column Selection")
-            all_cols = list(df_uploaded.columns)
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                feature_cols_sel = st.multiselect(
-                    "Feature columns (X) — one or more",
-                    all_cols,
-                    help="Numeric input columns for the perceptron."
-                )
-            with col_b:
-                remaining = [c for c in all_cols if c not in feature_cols_sel]
-                target_col_sel = st.selectbox(
-                    "Target column (y) — binary",
-                    ["— select —"] + remaining,
-                    help="Binary output column. Must have exactly 2 unique classes."
-                )
-
-            if not feature_cols_sel or target_col_sel == "— select —":
-                st.info("Select feature and target columns above to continue.")
-            else:
-                # Validate
-                vr = validate_dataset(df_uploaded, feature_cols_sel, target_col_sel)
-
-                for err in vr.errors:
-                    st.error(f"❌ {err}")
-                for warn in vr.warnings:
-                    st.warning(f"⚠️ {warn}")
-                for info in vr.info:
-                    st.info(f"ℹ️ {info}")
-
-                if vr.valid:
-                    X, y = vr.X, vr.y
-                    feature_cols = vr.feature_cols
-                    data_ready = True
-                    st.success(
-                        f"✅ Dataset ready — **{vr.n_samples} samples**, "
-                        f"**{vr.n_features} feature(s)**, "
-                        f"Class 0: **{int(np.sum(y==0))}**, Class 1: **{int(np.sum(y==1))}**"
-                    )
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # HYPERPARAMETERS
-    # ══════════════════════════════════════════════════════════════════════════
-    if not data_ready:
-        return
-
-    st.divider()
-    st.subheader("Hyperparameters")
-    n_features = X.shape[1]
-
-    c1, c2 = st.columns(2)
-    with c1:
-        learning_rate = st.number_input(
-            "Learning Rate (η)", value=0.1, min_value=0.0001,
-            max_value=1.0, step=0.01, format="%.4f"
-        )
-    with c2:
-        epochs = st.slider("Maximum Epochs", 10, 2000, 100)
-
-    mode = st.radio("Weight Initialization", ["Random", "Manual"], horizontal=True)
-
-    weights_init = np.zeros(n_features)
-    bias_init = 0.0
-
-    if mode == "Manual":
-        with st.expander("Manual Weight Input", expanded=True):
-            input_cols = st.columns(min(n_features + 1, 4))
-            for i in range(n_features):
-                weights_init[i] = input_cols[i % len(input_cols)].number_input(
-                    f"w{i+1} ({feature_cols[i]})", value=0.0,
-                    min_value=-1.0, max_value=1.0,
-                    step=0.1, format="%.4f", key=f"mw_{i}"
-                )
-            bias_init = input_cols[n_features % len(input_cols)].number_input(
-                "Bias (b)", value=0.0,
-                min_value=-1.0, max_value=1.0,
-                step=0.1, format="%.4f", key="mb"
-            )
-    else:
-        st.info("Weights initialized from Uniform(−1, 1) at each training run.")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # TRAIN
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-
-    btn_col, reset_col = st.columns([4, 1])
-    with reset_col:
-        if st.button("🔄 Reset", use_container_width=True):
-            _reset_state()
-            st.rerun()
-
-    log_expander = st.expander("📋 Live Training Log", expanded=False)
-    with log_expander:
-        log_placeholder = st.empty()
-
-    if st.session_state.training_log:
-        render_log(log_placeholder, st.session_state.training_log)
-
-    with btn_col:
-        train_clicked = st.button(
-            "▶ Train Perceptron", type="primary", use_container_width=True
-        )
-
-    if train_clicked:
-        if mode == "Random":
-            w_init = np.random.uniform(-1, 1, n_features)
-            b_init_val = random.uniform(-1, 1)
-        else:
-            w_init = weights_init.copy()
-            b_init_val = float(bias_init)
-
-        w_final, b_final, losses, log_lines, converged, conv_epoch = train_perceptron(
-            X, y, w_init, b_init_val, learning_rate, epochs
-        )
-
-        st.session_state.weights         = w_final
-        st.session_state.bias            = b_final
-        st.session_state.losses          = losses
-        st.session_state.trained         = True
-        st.session_state.training_log    = log_lines
-        st.session_state.converged       = converged
-        st.session_state.converged_epoch = conv_epoch
-        st.session_state.n_features      = n_features
-        st.session_state.feature_cols    = feature_cols
-        st.session_state.X_train         = X
-        st.session_state.y_train         = y
-
-        render_log(log_placeholder, log_lines)
-
-        if converged:
-            st.success(f"✅ Converged at epoch **{conv_epoch}** with zero error!")
-        else:
-            st.warning(
-                f"⚠️ Did not converge in {epochs} epochs — "
-                f"final loss: **{losses[-1]:.4f}**. "
-                f"Dataset may not be linearly separable."
-            )
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # RESULTS
-    # ══════════════════════════════════════════════════════════════════════════
-    if not (st.session_state.trained and st.session_state.weights is not None):
-        return
-
-    st.divider()
-    st.subheader("Results")
-
-    w      = st.session_state.weights
-    b      = st.session_state.bias
-    X_tr   = st.session_state.X_train
-    y_tr   = st.session_state.y_train
-    fcols  = st.session_state.feature_cols
-    n_feat = st.session_state.n_features
-
-    correct, total = compute_accuracy(X_tr, y_tr, w, b)
-    accuracy = correct / total * 100
-
-    # Metric cards — up to 6 per row
-    all_metrics = [(f"w{i+1} ({fcols[i]})", f"{w[i]:.4f}") for i in range(n_feat)]
-    all_metrics += [("Bias (b)", f"{b:.4f}"), ("Accuracy", f"{accuracy:.1f}%"), ("Correct", f"{correct}/{total}")]
-
-    for chunk_start in range(0, len(all_metrics), 5):
-        chunk = all_metrics[chunk_start:chunk_start+5]
-        cols = st.columns(len(chunk))
-        for col, (label, val) in zip(cols, chunk):
-            col.metric(label, val)
-
-    # Tabs
-    tab_loss, tab_boundary, tab_preds = st.tabs([
-        "📉 Loss Curve", "📊 Decision Boundary", "🔍 Predictions"
+    tab_theory, tab_math, tab_experiment, tab_analysis = st.tabs([
+        "Theory", "Math", "Experiment", "Analysis"
     ])
 
-    with tab_loss:
-        st.plotly_chart(plot_loss_curve(st.session_state.losses), use_container_width=True)
+    _init_state()
 
-    with tab_boundary:
-        if n_feat == 1:
-            st.plotly_chart(plot_1d_threshold(X_tr, y_tr, w, b, fcols), use_container_width=True)
-        elif n_feat == 2:
-            st.plotly_chart(
-                plot_decision_boundary_2d(X_tr, y_tr, w, b, fcols, title=f"{gate_name} — Decision Boundary"),
-                use_container_width=True
-            )
-            st.caption("Dashed line: **w1·x1 + w2·x2 + b = 0**")
-        else:
-            st.info(
-                f"Decision boundary cannot be plotted directly for {n_feat} features. "
-                f"Per-sample predictions are shown in the Predictions tab."
-            )
-
-    with tab_preds:
-        df_preds = build_prediction_table(X_tr, y_tr, w, b, fcols)
-        st.dataframe(df_preds, hide_index=True, use_container_width=True)
-        st.caption(f"Accuracy: {correct}/{total} = {accuracy:.1f}%")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # LIVE PREDICTION
-    # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Try a Prediction")
-    st.caption("Enter input values to test the trained perceptron.")
-
-    # Step size: binary (gate or binary CSV cols) → 1, continuous CSV → 0.01
-    is_binary_data = data_source == "Logic Gate" or (
-        X_tr is not None and np.all(np.isin(X_tr, [0, 1]))
-    )
-
-    pred_cols_ui = st.columns(min(n_feat, 4))
-    pred_inputs = []
-    for i in range(n_feat):
-        col_idx = i % len(pred_cols_ui)
-        if data_source == "Logic Gate":
-            # Hard-lock to 0 or 1 only
-            val = pred_cols_ui[col_idx].selectbox(
-                fcols[i], options=[0, 1], key=f"pi_{i}"
-            )
-        elif is_binary_data:
-            val = pred_cols_ui[col_idx].number_input(
-                fcols[i], value=0.0, min_value=0.0, max_value=1.0,
-                step=1.0, format="%.0f", key=f"pi_{i}"
-            )
-        else:
-            val = pred_cols_ui[col_idx].number_input(
-                fcols[i], value=0.0, step=0.01, format="%.4f", key=f"pi_{i}"
-            )
-        pred_inputs.append(val)
-
-    if st.button("🔍 Predict", type="primary"):
-        x_in = np.array(pred_inputs)
-        ws = float(np.dot(w, x_in) + b)
-        pred = 1 if ws >= 0 else 0
-        color = "#22C55E" if pred == 1 else "#EF4444"
+    with tab_theory:
+        st.subheader("What is a Perceptron?")
         st.markdown(
-            f"<h3 style='color:{color}'>Predicted Class: {pred}</h3>",
-            unsafe_allow_html=True
+            "The **Perceptron** is the simplest form of an artificial neural network. "
+            "It is a single-layer, binary linear classifier. "
+            "It takes multiple inputs, multiplies them by connection weights, adds a bias, "
+            "and passes the sum through a step function to output either 0 or 1.\n\n"
+            "**Key Concepts:**\n"
+            "- **Linearly Separable**: It can only solve linearly separable problems (like AND, OR). "
+            "It fails on non-linear problems like XOR.\n"
+            "- **Learning Process**: It learns by updating weights when it makes an error, "
+            "pushing the decision boundary iteratively toward the correct classification."
         )
-        with st.expander("Computation Breakdown"):
-            terms = " + ".join([f"({w[i]:.4f} × {x_in[i]:.4f})" for i in range(n_feat)])
-            st.code(
-                f"weighted_sum = {terms} + ({b:.4f})\n"
-                f"           = {ws:.6f}\n"
-                f"step({'≥0' if ws >= 0 else '<0'})  →  class {pred}",
-                language="text"
-            )
+
+    with tab_math:
+        st.subheader("The Mathematics")
+        st.markdown(
+            r"""
+            **1. Weighted Sum ($z$)**
+            $$ z = \sum_{i=1}^{n} w_i x_i + b $$
+
+            **2. Activation Function (Step Function)**
+            $$ \hat{y} = \begin{cases} 1 & \text{if } z \geq 0 \\ 0 & \text{if } z < 0 \end{cases} $$
+
+            **3. Error Calculation**
+            $$ e = y - \hat{y} $$
+
+            **4. Weight Update Rule**
+            $$ w_i \leftarrow w_i + \eta \cdot e \cdot x_i $$
+            $$ b \leftarrow b + \eta \cdot e $$
+            Where $\eta$ is the **Learning Rate**.
+            """
+        )
+
+    with tab_experiment:
+        X, y, feature_cols, gate_name = None, None, ["X1", "X2"], "Custom"
+        data_ready = False
+
+        data_source = st.radio("Select Data Source", ["Logic Gate", "Upload CSV"], horizontal=True)
+
+        if data_source == "Logic Gate":
+            gate_name = st.selectbox("Select Logic Gate", list(GATES.keys()))
+            gate_info = GATES[gate_name]
+            raw = gate_info["data"]
+            X = np.array([[r[0], r[1]] for r in raw], dtype=float)
+            y = np.array([r[2] for r in raw], dtype=int)
+            feature_cols = ["X1", "X2"]
+            data_ready = True
+
+            if not gate_info["separable"]:
+                st.warning(
+                    "**XOR is not linearly separable.** A single perceptron cannot "
+                    "achieve zero error."
+                )
+
+            if st.session_state.last_gate != gate_name:
+                st.session_state.last_gate = gate_name
+                _reset_state()
+
+            st.dataframe(pd.DataFrame(raw, columns=["X1", "X2", "Output"]), hide_index=True, use_container_width=True)
+
+        else:
+            uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+            if uploaded_file is None:
+                st.info("Upload a CSV with numeric features and a binary target.")
+            else:
+                try:
+                    df_uploaded = pd.read_csv(uploaded_file)
+                    st.dataframe(df_uploaded.head(), hide_index=True)
+                    all_cols = list(df_uploaded.columns)
+                    feature_cols_sel = st.multiselect("Feature columns (X)", all_cols)
+                    target_col_sel = st.selectbox("Target column (y)", ["— select —"] + [c for c in all_cols if c not in feature_cols_sel])
+                    
+                    if feature_cols_sel and target_col_sel != "— select —":
+                        vr = validate_dataset(df_uploaded, feature_cols_sel, target_col_sel)
+                        if vr.valid:
+                            X, y, feature_cols = vr.X, vr.y, vr.feature_cols
+                            data_ready = True
+                            st.success(f"✅ Ready: {vr.n_samples} samples.")
+                except Exception as e:
+                    st.error(f"Error parsing CSV: {e}")
+
+        if data_ready:
+            st.divider()
+            n_features = X.shape[1]
+            c1, c2 = st.columns(2)
+            with c1:
+                learning_rate = st.number_input("Learning Rate (η)", value=0.1, step=0.01)
+            with c2:
+                epochs = st.slider("Maximum Epochs", 10, 2000, 100)
+
+            mode = st.radio("Weight Initialization", ["Random", "Manual"], horizontal=True)
+            weights_init = np.zeros(n_features)
+            bias_init = 0.0
+
+            if mode == "Manual":
+                with st.expander("Manual Weight Input", expanded=True):
+                    input_cols = st.columns(min(n_features + 1, 4))
+                    for i in range(n_features):
+                        weights_init[i] = input_cols[i % len(input_cols)].number_input(f"w{i+1}", value=0.0, step=0.1)
+                    bias_init = input_cols[n_features % len(input_cols)].number_input("Bias", value=0.0, step=0.1)
+
+            btn_col, reset_col = st.columns([4, 1])
+            with reset_col:
+                if st.button("🔄 Reset"):
+                    _reset_state()
+                    st.rerun()
+
+            log_expander = st.expander("📋 Live Training Log", expanded=False)
+            with log_expander:
+                log_placeholder = st.empty()
+
+            if st.session_state.training_log:
+                render_log(log_placeholder, st.session_state.training_log)
+
+            with btn_col:
+                train_clicked = st.button("▶ Train Perceptron", type="primary", use_container_width=True)
+
+            if train_clicked:
+                if mode == "Random":
+                    w_init = np.random.uniform(-1, 1, n_features)
+                    b_init_val = random.uniform(-1, 1)
+                else:
+                    w_init, b_init_val = weights_init.copy(), float(bias_init)
+
+                w_final, b_final, losses, log_lines, converged, conv_epoch = train_perceptron(X, y, w_init, b_init_val, learning_rate, epochs)
+                
+                st.session_state.update({
+                    "weights": w_final, "bias": b_final, "losses": losses, "trained": True,
+                    "training_log": log_lines, "converged": converged, "converged_epoch": conv_epoch,
+                    "n_features": n_features, "feature_cols": feature_cols, "X_train": X, "y_train": y
+                })
+                
+                render_log(log_placeholder, log_lines)
+                if converged:
+                    st.success(f"✅ Converged at epoch **{conv_epoch}**!")
+                else:
+                    st.warning(f"⚠️ Did not converge. Need more epochs or non-linearly separable.")
+
+    with tab_analysis:
+        if not (st.session_state.trained and st.session_state.weights is not None):
+            st.info("Train the model in the Experiment tab first to view Analysis.")
+        else:
+            w, b = st.session_state.weights, st.session_state.bias
+            X_tr, y_tr = st.session_state.X_train, st.session_state.y_train
+            fcols, n_feat = st.session_state.feature_cols, st.session_state.n_features
+
+            correct, total = compute_accuracy(X_tr, y_tr, w, b)
+            accuracy = correct / total * 100
+
+            st.subheader("Result Interpretation & Metrics")
+            
+            # Advice based on results
+            interpret_results("Perceptron", {
+                "accuracy": accuracy,
+                "converged": st.session_state.converged
+            })
+
+            all_metrics = [(f"w{i+1}", f"{w[i]:.4f}") for i in range(n_feat)] + [("Bias", f"{b:.4f}"), ("Accuracy", f"{accuracy:.1f}%")]
+            cols = st.columns(len(all_metrics))
+            for col, (label, val) in zip(cols, all_metrics):
+                col.metric(label, val)
+
+            sub_tabs = st.tabs(["📉 Loss Curve", "📊 Decision Boundary", "⛰️ 3D Loss Surface", "🔍 Predictions"])
+            with sub_tabs[0]:
+                st.plotly_chart(plot_loss_curve(st.session_state.losses), use_container_width=True)
+            with sub_tabs[1]:
+                if n_feat == 1:
+                    st.plotly_chart(plot_1d_threshold(X_tr, y_tr, w, b, fcols), use_container_width=True)
+                elif n_feat == 2:
+                    st.plotly_chart(plot_decision_boundary_2d(X_tr, y_tr, w, b, fcols), use_container_width=True)
+                else:
+                    st.info("Cannot plot boundary for >2 features.")
+            with sub_tabs[2]:
+                if n_feat >= 2:
+                    st.plotly_chart(plot_loss_surface_3d(X_tr, y_tr, w, b), use_container_width=True)
+                else:
+                    st.info("3D surface requires at least 2 weights.")
+            with sub_tabs[3]:
+                st.dataframe(build_prediction_table(X_tr, y_tr, w, b, fcols), hide_index=True, use_container_width=True)
+
+                # ══════════════════════════════════════════════════════════════════════════
+                # LIVE PREDICTION
+                # ══════════════════════════════════════════════════════════════════════════
+                st.divider()
+                st.subheader("Try a Prediction")
+                st.caption("Enter input values to test the trained perceptron.")
+
+                # Step size: binary (gate or binary CSV cols) → 1, continuous CSV → 0.01
+                is_binary_data = data_source == "Logic Gate" or (
+                    X_tr is not None and np.all(np.isin(X_tr, [0, 1]))
+                )
+
+                pred_cols_ui = st.columns(min(n_feat, 4))
+                pred_inputs = []
+                for i in range(n_feat):
+                    col_idx = i % len(pred_cols_ui)
+                    if data_source == "Logic Gate":
+                        # Hard-lock to 0 or 1 only
+                        val = pred_cols_ui[col_idx].selectbox(
+                            fcols[i], options=[0, 1], key=f"pi_{i}"
+                        )
+                    elif is_binary_data:
+                        val = pred_cols_ui[col_idx].number_input(
+                            fcols[i], value=0.0, min_value=0.0, max_value=1.0,
+                            step=1.0, format="%.0f", key=f"pi_{i}"
+                        )
+                    else:
+                        val = pred_cols_ui[col_idx].number_input(
+                            fcols[i], value=0.0, step=0.01, format="%.4f", key=f"pi_{i}"
+                        )
+                    pred_inputs.append(val)
+
+                if st.button("🔍 Predict", type="primary"):
+                    x_in = np.array(pred_inputs)
+                    ws = float(np.dot(w, x_in) + b)
+                    pred = 1 if ws >= 0 else 0
+                    color = "#22C55E" if pred == 1 else "#EF4444"
+                    st.markdown(
+                        f"<h3 style='color:{color}'>Predicted Class: {pred}</h3>",
+                        unsafe_allow_html=True
+                    )
+                    with st.expander("Computation Breakdown"):
+                        terms = " + ".join([f"({w[i]:.4f} × {x_in[i]:.4f})" for i in range(n_feat)])
+                        st.code(
+                            f"weighted_sum = {terms} + ({b:.4f})\n"
+                            f"           = {ws:.6f}\n"
+                            f"step({'≥0' if ws >= 0 else '<0'})  →  class {pred}",
+                            language="text"
+                        )
